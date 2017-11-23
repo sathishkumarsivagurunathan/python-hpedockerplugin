@@ -216,37 +216,6 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         self.assertEqual(state['Running'], False)
         return container_info
 
-    def hpe_inspect_container_volume_mount(self, volume_name, container_name):
-        # Inspect container
-        inspect_container = self.client.inspect_container(container_name)
-        mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith( 'hpedocker-dm-uuid',109 )
-        self.assertEqual(mount_status, True)
-        # Inspect volume
-        inspect_volume = self.client.inspect_volume(volume_name)
-        mountpoint = inspect_volume['Mountpoint']
-        mount_status2 = mountpoint.startswith( 'hpedocker-dm-uuid',14 )
-        self.assertEqual(mount_status2, True)
-
-    def hpe_inspect_container_volume_unmount(self, volume_name, container_name):
-
-        # Inspect container
-        inspect_container = self.client.inspect_container(container_name)
-        mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith( 'hpedocker-dm-uuid',109 )
-        self.assertEqual(mount_status, False)
-        # Inspect volume
-        inspect_volume = self.client.inspect_volume(volume_name)
-        mountpoint = inspect_volume['Mountpoint']
-        mount_status2 = mountpoint.startswith( 'hpedocker-dm-uuid',14 )
-        self.assertEqual(mount_status2, False)
-
-    def hpe_list_volume(self):
-        # List volumes
-        volumes = self.client.volumes()
-        return volumes
-
-
 class HPE3ParBackendVerification(BaseAPIIntegrationTest):
     """
     This class covers all the methods to verify entities in 3Par array.

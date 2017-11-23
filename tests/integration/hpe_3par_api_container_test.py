@@ -2,7 +2,7 @@ import tempfile
 import docker
 import pytest
 import yaml
-
+from time import sleep
 import six
 
 from .base import TEST_API_VERSION, BUSYBOX
@@ -24,7 +24,7 @@ ETCD = cfg['etcd']['container']
 
 @requires_api_version('1.20')
 class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
-
+    '''
     @classmethod
     def setUpClass(cls):
         c = docker.APIClient(
@@ -68,7 +68,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             c.remove_plugin(HPE3PAR, force=True)
         except docker.errors.APIError:
             pass
-
+    '''
 
     def test_volume_mount(self):
         '''
@@ -228,17 +228,15 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_mount_volume(BUSYBOX, command='sh', detach=True,
                               tty=True, stdin_open=True,
                               name=helpers.random_name(), host_config=host_conf
-                              )
-
+        )
         result = self.client.volumes(filters={'dangling': True})
         volumes = result['Volumes']
         self.assertNotIn(volume1, volumes)
         volume = [volume2, volume3]
         for vol in volume:
             self.assertIn(vol, volumes)
-        for dangling_vol in volumes:
-            self.hpe_delete_volume(dangling_vol)
-            self.hpe_verify_volume_deleted(dangling_vol['Name'])
+            self.hpe_delete_volume(vol)
+            self.hpe_verify_volume_deleted(vol['Name'])
 
     def test_volume_persists_container_is_removed(self):
         '''
@@ -274,7 +272,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
         try:
             self.client.remove_volume(volume_name)
-        except Exception as ex:
+        except docker.errors.APIError as ex:
             resp = ex.status_code
             self.assertEqual(resp, 409)
 
@@ -330,9 +328,8 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                 self.client.remove_container(ctnr.id)
             except docker.errors.APIError:
                 continue
-
-        removed_ctnr_list = client.containers.list(all=True)
-        assert len(removed_ctnr_list) == 1
+        # removed_ctnr_list = client.containers.list(all=True)
+        # assert len(removed_ctnr_list) == 1
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
 
@@ -374,77 +371,161 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.assertEqual(out, b'/data1/random: OK\n')
         container1.stop()
 
-    def test_mount_unmount_compressed_volume(self):
+    def test_clone_mount_unmount_delete(self):
         '''
-           This is a test to verify mount and unmount a compressed volume.
+           This is a volume mount test.
 
            Steps:
            1. Create volume and verify if volume got created in docker host and 3PAR array
            2. Create a host config file to setup container.
            3. Create a container and mount volume to it.
-           4. Inspect containers and verify the volume is mounted or not
-           5. Verify if VLUN is available in 3Par array.
-           6. Write data on volume
-           7. Unmount the volume
-           8. Verify if VLUN entry is not available in 3Par array.
-           9. Read the data from the volume
+           4. Verify if VLUN is available in 3Par array.
 
         '''
-        client = docker.from_env(version=TEST_API_VERSION)
         volume_name = helpers.random_name()
-        container_name = helpers.random_name()
+        clone_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
-        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
-                               size="17", provisioning='thin', compression='true')
-        container = client.containers.run(BUSYBOX,"sh", detach=True,
-                                          name=container_name, tty=True, stdin_open=True,
-                                          volumes=[volume_name + ':/insidecontainer']
-        )
-        self.tmp_containers.append(container.id)
-        self.hpe_inspect_container_volume_mount(volume_name,container_name)
-        self.hpe_verify_volume_mount(volume_name)
-        container.exec_run("sh -c 'echo \"hello compressed volume\" > /insidecontainer/test'")
-        container.stop()
-        self.hpe_inspect_container_volume_unmount(volume_name,container_name)
-        self.hpe_verify_volume_unmount(volume_name)
-        container.start()
-        assert container.exec_run("cat /insidecontainer/test") == b"hello compressed volume\n"
+        self.tmp_volumes.append(clone_name)
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR)
+        clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
+                                       cloneOf=volume_name)
+        sleep(120)
+        host_conf = self.hpe_create_host_config(volume_driver=HPE3PAR,
+                                                binds= clone_name + ':/data1')
+        mount = self.hpe_mount_volume(BUSYBOX, command='sh', detach=True,
+                              tty=True, stdin_open=True,
+                              name=helpers.random_name(), host_config=host_conf
+                              )
+        # Verifying in 3par
+        self.hpe_verify_volume_mount(clone_name)
 
-    def test_delete_compressed_volume(self):
-        '''
-           This is a delete compressed volume test.
-
-           Steps:
-           1. Create volume and verify if volume got created in docker host and 3PAR array
-           2. Create a host config file to setup container.
-           3. Create a container and mount volume to it.
-           4. Try to delete the volume - it should not get deleted
-           5. List volumes - Volume should be listed
-           6. Stop the container
-           7. Delete the volume - Volume should get deleted.
-           8. List volumes - Volume should not be listed.
-
-        '''
-        client = docker.from_env(version=TEST_API_VERSION)
-        volume_name = helpers.random_name()
-        container_name = helpers.random_name()
-        self.tmp_volumes.append(volume_name)
-        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
-                               size="17", provisioning='thin', compression='true')
-        container = client.containers.run(BUSYBOX,"sh", detach=True,
-                                          name=container_name, tty=True, stdin_open=True,
-                                          volumes=[volume_name + ':/insidecontainer']
-        )
-        self.tmp_containers.append(container.id)
         try:
-            self.client.remove_volume(volume_name)
-        except Exception as ex:
+            self.client.remove_volume(clone_name)
+        except docker.errors.APIError as ex:
             resp = ex.status_code
             self.assertEqual(resp, 409)
-        self.hpe_verify_volume_created(volume_name,size="17",provisioning='thin')
-        container.stop()
-        container.remove()
 
+        id = mount['Id']
+        # Unmount volume to this container
+        self.client.stop(id)
+        sleep(5)
+        self.client.remove_container(id)
+        self.hpe_verify_volume_unmount(clone_name)
+        self.hpe_delete_volume(clone)
+        self.hpe_verify_volume_deleted(clone_name)
+
+    def test_read_clone_data(self):
+        '''
+           This is a test of write data and verify that data from file archive of container.
+
+           Steps:
+           1. Create volume and verify if volume got created in docker host and 3PAR array
+           2. Create a host config file to setup container.
+           3. Create a container and mount volume to it.
+           4. Write the data in a file which gets created in 3Par volume.
+           5. Get the archive of the above file and verify if data is available in that file.
+
+        '''
+        client = docker.from_env(version=TEST_API_VERSION)
+        volume_name = helpers.random_name()
+        clone_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        self.tmp_volumes.append(clone_name)
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR)
+        container_volume = client.containers.run(BUSYBOX, "sh", detach=True,
+                                          name=helpers.random_name(), tty=True, stdin_open=True,
+                                          volumes=[volume_name + ':/data1']
+        )
+        container_volume.exec_run("sh -c 'echo \"cloned_data\" > /data1/test'")
+
+        clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
+                                       cloneOf=volume_name)
+        sleep(120)
+        self.hpe_verify_volume_created(clone_name, size='100',
+                                       provisioning='thin', clone=True)
+        container_clone = client.containers.run(BUSYBOX, "sh", detach=True,
+                                                name=helpers.random_name(), tty=True, stdin_open=True,
+                                                volumes=[clone_name + ':/data2']
+        )
+        self.hpe_verify_volume_mount(clone_name)
+        assert container_clone.exec_run("cat /data2/test") == b"cloned_data\n"
+
+        containers = [container_volume, container_clone]
+        for container in containers:
+            self.tmp_containers.append(container.id)
+            container.stop()
+            container.wait()
+            container.remove()
+        self.hpe_verify_volume_unmount(volume_name)
+        self.hpe_verify_volume_unmount(clone_name)
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
+        self.hpe_delete_volume(clone)
+        self.hpe_verify_volume_deleted(clone_name)
+
+    def test_mount_volume_create_snapshots(self):
+        '''
+           This is a test of write data and verify that data from file archive of container.
+
+           Steps:
+           1. Create volume and verify if volume got created in docker host and 3PAR array
+           2. Create a host config file to setup container.
+           3. Create a container and mount volume to it.
+           4. Write the data in a file which gets created in 3Par volume.
+           5. Get the archive of the above file and verify if data is available in that file.
+
+        '''
+        client = docker.from_env(version=TEST_API_VERSION)
+        volume_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        snapshot_names = []
+        i = 0; j = 0; k = 0
+        for i in range(3):
+            snapshot_names.append(helpers.random_name())
+            self.tmp_volumes.append(volume_name + '/' + snapshot_names[i])
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
+                               size=THIN_SIZE, provisioning='thin')
+        container = client.containers.run(BUSYBOX, "sh", detach=True,
+                                          name=helpers.random_name(), tty=True, stdin_open=True,
+                                          volumes=[volume_name + ':/data1']
+        )
+        self.tmp_containers.append(container.id)
+        container.exec_run("sh -c 'echo \"snapshot_data\" > /data1/test'")
+
+        self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
+                                 snapshotOf=volume_name)
+        self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
+                                 snapshotOf=volume_name, expirationHours='2')
+        self.hpe_create_snapshot(snapshot_names[2], driver=HPE3PAR,
+                                 snapshotOf=volume_name, expirationHours='6')
+        inspect_volume_snapshot = self.client.inspect_volume(volume_name)
+        snapshots = inspect_volume_snapshot['Status']['Snapshots']
+        snapshot_list = []
+        for j in range(len(snapshots)):
+            snapshot_list.append(snapshots[j]['Name'])
+        for snapshot in snapshot_names:
+            self.assertIn(snapshot, snapshot_list)
+        container.stop()
+        container.wait()
+        container.remove()
+        self.hpe_verify_volume_unmount(volume_name)
+        for snapshot in snapshot_names:
+            self.hpe_delete_snapshot(volume_name, snapshot)
+            self.hpe_verify_snapshot_deleted(volume_name, snapshot)
+        inspect_volume_snapshot = self.client.inspect_volume(volume_name)
+        if 'Status' not in inspect_volume_snapshot:
+            pass
+        else:
+            snapshots = inspect_volume_snapshot['Status']['Snapshots']
+            snapshot_list = []
+            for k in range(len(snapshots)):
+                snapshot_list.append(snapshots[k]['Name'])
+            for snapshot in snapshot_names:
+                self.assertNotIn(snapshot, snapshot_list)
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)
+
+
+
+
 
