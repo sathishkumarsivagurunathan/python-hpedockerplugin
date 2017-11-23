@@ -25,7 +25,7 @@ COMPRESS_SIZE = cfg['volumes']['compress_size']
 
 @requires_api_version('1.21')
 class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
-    '''
+
     @classmethod
     def setUpClass(cls):
         c = docker.APIClient(
@@ -69,7 +69,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             c.remove_plugin(HPE3PAR, force=True)
         except docker.errors.APIError:
             pass
-    '''
+    
 
     def test_thin_prov_volume(self):
         '''
