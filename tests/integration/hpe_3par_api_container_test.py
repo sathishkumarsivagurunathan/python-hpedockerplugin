@@ -24,18 +24,16 @@ ETCD = cfg['etcd']['container']
 
 @requires_api_version('1.20')
 class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
-
     @classmethod
     def setUpClass(cls):
         c = docker.APIClient(
             version=TEST_API_VERSION, timeout=600,
             **docker.utils.kwargs_from_env()
         )
-
         try:
             prv = c.plugin_privileges(HPE3PAR)
-            for d in c.pull_plugin(HPE3PAR, prv):
-                pass
+            logs = [d for d in c.pull_plugin(HPE3PAR, prv)]
+            assert filter(lambda x: x['status'] == 'Download complete', logs)
             if HOST_OS == 'ubuntu':
                 c.configure_plugin(HPE3PAR, {
                     'certs.source': CERTS_SOURCE
@@ -47,7 +45,8 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                 })
             pl_data = c.inspect_plugin(HPE3PAR)
             assert pl_data['Enabled'] is False
-            assert c.enable_plugin(HPE3PAR)
+            while pl_data['Enabled'] is False:
+                c.enable_plugin(HPE3PAR)
             pl_data = c.inspect_plugin(HPE3PAR)
             assert pl_data['Enabled'] is True
         except docker.errors.APIError:
@@ -68,7 +67,6 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             c.remove_plugin(HPE3PAR, force=True)
         except docker.errors.APIError:
             pass
-
 
     def test_volume_mount(self):
         '''
@@ -190,7 +188,6 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
            2. Create a host config file to setup container.
            3. Create a container and mount volume to it with command to create a file in 3Par volume.
            4. Verify if container gets exited with 1 exit code just like 'docker wait' command.
-
         '''
         volume_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -284,6 +281,20 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_shared_volume(self):
+        '''
+           This is a shared volume test.
+
+           Steps:
+           1. Create volume and verify if volume got created in docker host and 3PAR array
+           2. Create a host config file to setup container.
+           3. Create a container1 and mount volume to it with command to create a file in 3Par volume.
+           4. Stop container1.
+           5. Create and start container2 with --volumes-from option mounting the volume from container1.
+           6. Write data from container2 and verify the data of container1.
+           7. Stop container2.
+           8. Create and start container3 with --volumes-from option mounting the volume from container1 with read-only mode.
+        '''
+
         client = docker.from_env(version=TEST_API_VERSION)
         volume_name = helpers.random_name()
         mounters = [helpers.random_name(), helpers.random_name(), helpers.random_name()]
@@ -335,15 +346,16 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
     def test_checksum_persistance_of_binary_file(self):
         '''
-           This is a test of write data and verify that data from file archive of container.
+           This is a test of verify checksum persistence of binary file in 3par volume.
 
            Steps:
            1. Create volume and verify if volume got created in docker host and 3PAR array
            2. Create a host config file to setup container.
            3. Create a container and mount volume to it.
-           4. Write the data in a file which gets created in 3Par volume.
-           5. Get the archive of the above file and verify if data is available in that file.
-
+           4. Create a random binary file.
+           5. Get the checksum of that file.
+           6. Unmount the volume.
+           7. Verify the checksum persistence of that binary file.
         '''
         client = docker.from_env(version=TEST_API_VERSION)
         volume_name = helpers.random_name()
@@ -373,14 +385,18 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
     def test_clone_mount_unmount_delete(self):
         '''
-           This is a volume mount test.
+           This is a mount test of a cloned volume.
 
            Steps:
-           1. Create volume and verify if volume got created in docker host and 3PAR array
-           2. Create a host config file to setup container.
-           3. Create a container and mount volume to it.
-           4. Verify if VLUN is available in 3Par array.
-
+           1. Create a volume.
+           2. Create a clone and verify if clone got created in docker host and 3PAR array
+           3. Create a host config file to setup container.
+           4. Create a container and mount clone to it.
+           5. Verify if VLUN is available in 3Par array.
+           6. Unmount the clone.
+           7. Verify the unmount in 3par array.
+           8. Delete the clone.
+           9. Verify the removal of clone in 3par array.
         '''
         volume_name = helpers.random_name()
         clone_name = helpers.random_name()
@@ -416,15 +432,17 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
     def test_read_clone_data(self):
         '''
-           This is a test of write data and verify that data from file archive of container.
+           This is a test of reading data of cloned volume.
 
            Steps:
-           1. Create volume and verify if volume got created in docker host and 3PAR array
-           2. Create a host config file to setup container.
-           3. Create a container and mount volume to it.
-           4. Write the data in a file which gets created in 3Par volume.
-           5. Get the archive of the above file and verify if data is available in that file.
-
+           1. Create a volume, mount it and write some data on it.
+           2. Create a clone and verify if clone got created in docker host and 3PAR array
+           3. Create a host config file to setup container.
+           4. Create a container and mount clone to it.
+           5. Read the data in cloned volume.
+           6. Stop and remove the containers.
+           7. Remove both volume and its clone.
+           8. Verify the removal of volume and clone in 3par array.
         '''
         client = docker.from_env(version=TEST_API_VERSION)
         volume_name = helpers.random_name()
@@ -436,8 +454,10 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           name=helpers.random_name(), tty=True, stdin_open=True,
                                           volumes=[volume_name + ':/data1']
         )
+        sleep(10)
+        container_volume.exec_run("sh -c 'touch /data1/test'")
         container_volume.exec_run("sh -c 'echo \"cloned_data\" > /data1/test'")
-
+        sleep(10)
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
         sleep(120)
@@ -445,10 +465,11 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                        provisioning='thin', clone=True)
         container_clone = client.containers.run(BUSYBOX, "sh", detach=True,
                                                 name=helpers.random_name(), tty=True, stdin_open=True,
-                                                volumes=[clone_name + ':/data2']
+                                                volumes=[clone_name + ':/data1']
         )
+        sleep(10)
         self.hpe_verify_volume_mount(clone_name)
-        assert container_clone.exec_run("cat /data2/test") == b"cloned_data\n"
+        assert container_clone.exec_run("sh -c 'cat /data1/test'") == b"cloned_data\n"
 
         containers = [container_volume, container_clone]
         for container in containers:
@@ -465,16 +486,19 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
     def test_mount_volume_create_snapshots(self):
         '''
-           This is a test of write data and verify that data from file archive of container.
+            This is a snapshot create test of a mounted volume.
 
-           Steps:
-           1. Create volume and verify if volume got created in docker host and 3PAR array
-           2. Create a host config file to setup container.
-           3. Create a container and mount volume to it.
-           4. Write the data in a file which gets created in 3Par volume.
-           5. Get the archive of the above file and verify if data is available in that file.
-
-        '''
+            Steps:
+            1. Create a volume.
+            2. Create a container and mount volume to it.
+            3. Create multiple snapshots with and without expiration period.
+            4. Inspect snapshots.
+            5. Verify the snapshots in 3par array.
+            6. Unmount the volume.
+            7. Verify the unmount in 3par array.
+            8. Delete all the snapshots and volume.
+            9. Verify the removal of snapshots and volume in 3par array.
+         '''
         client = docker.from_env(version=TEST_API_VERSION)
         volume_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -498,6 +522,9 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                  snapshotOf=volume_name, expirationHours='2')
         self.hpe_create_snapshot(snapshot_names[2], driver=HPE3PAR,
                                  snapshotOf=volume_name, expirationHours='6')
+        self.hpe_verify_snapshot_created(volume_name, snapshot_names[0])
+        self.hpe_verify_snapshot_created(volume_name, snapshot_names[1], expirationHours='2')
+        self.hpe_verify_snapshot_created(volume_name, snapshot_names[2], expirationHours='6')
         inspect_volume_snapshot = self.client.inspect_volume(volume_name)
         snapshots = inspect_volume_snapshot['Status']['Snapshots']
         snapshot_list = []

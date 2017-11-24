@@ -66,7 +66,7 @@ def get_3par_snapshot_name(snapshot_id):
      and / with -
      """
     snapshot_name = encode_name(snapshot_id)
-    return "oss-%s" % snapshot_name
+    return "dcs-%s" % snapshot_name
 
 
 def get_3par_unmanaged_vol_name(volume_id):

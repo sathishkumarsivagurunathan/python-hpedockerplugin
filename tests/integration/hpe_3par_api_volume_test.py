@@ -33,9 +33,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         )
         try:
             prv = c.plugin_privileges(HPE3PAR)
-            for d in c.pull_plugin(HPE3PAR, prv):
-                pass
-
+            logs = [d for d in c.pull_plugin(HPE3PAR, prv)]
+            assert filter(lambda x: x['status'] == 'Download complete', logs)
             if HOST_OS == 'ubuntu':
                 c.configure_plugin(HPE3PAR, {
                     'certs.source': CERTS_SOURCE
@@ -47,7 +46,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                 })
             pl_data = c.inspect_plugin(HPE3PAR)
             assert pl_data['Enabled'] is False
-            assert c.enable_plugin(HPE3PAR)
+            while pl_data['Enabled'] is False:
+                c.enable_plugin(HPE3PAR)
             pl_data = c.inspect_plugin(HPE3PAR)
             assert pl_data['Enabled'] is True
         except docker.errors.APIError:
@@ -68,7 +68,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             c.remove_plugin(HPE3PAR, force=True)
         except docker.errors.APIError:
             pass
-    
+
 
     def test_thin_prov_volume(self):
         '''
@@ -276,6 +276,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             self.hpe_verify_volume_deleted(volume['Name'])
 
     def test_clone_without_options(self):
+        '''
+        This is a clone volume test without options.
+
+        Steps:
+        1. Create a volume without volume properties.
+        2. Create a clone of this volume.
+        3. Inspect the cloned volume.
+        4. Verify the clone in 3par array.
+        5. Delete the clone and volume both.
+        6. Verify the removal of volumes in 3par array.
+        '''
         volume_name = helpers.random_name()
         clone_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -293,6 +304,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_full_prov_clone(self):
+        '''
+        This is a clone volume test with source volume provisioning as full.
+
+        Steps:
+        1. Create a volume with volume provisioning as full.
+        2. Create a clone of this volume.
+        3. Inspect the cloned volume.
+        4. Verify the clone in 3par array.
+        5. Delete the clone and volume both.
+        6. Verify the removal of volumes in 3par array.
+        '''
         volume_name = helpers.random_name()
         clone_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -311,6 +333,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_dedup_prov_clone(self):
+        '''
+         This is a clone volume test with source volume provisioning as dedup.
+
+         Steps:
+         1. Create a volume with volume provisioning as dedup.
+         2. Create a clone of this volume.
+         3. Inspect the cloned volume.
+         4. Verify the clone in 3par array.
+         5. Delete the clone and volume both.
+         6. Verify the removal of volumes in 3par array.
+        '''
         volume_name = helpers.random_name()
         clone_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -329,6 +362,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_flash_cache_clone(self):
+        '''
+         This is a clone volume test with source volume flash-cache as true.
+
+         Steps:
+         1. Create a volume with volume flash-cache as true.
+         2. Create a clone of this volume.
+         3. Inspect the cloned volume.
+         4. Verify the clone in 3par array.
+         5. Delete the clone and volume both.
+         6. Verify the removal of volumes in 3par array.
+        '''
         volume_name = helpers.random_name()
         clone_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -347,6 +391,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_thin_compressed_clone(self):
+        '''
+         This is a clone volume test with source volume compression as true.
+
+         Steps:
+         1. Create a volume with volume compression as true.
+         2. Create a clone of this volume.
+         3. Inspect the cloned volume.
+         4. Verify the clone in 3par array.
+         5. Delete the clone and volume both.
+         6. Verify the removal of volumes in 3par array.
+        '''
         volume_name = helpers.random_name()
         clone_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -365,6 +420,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_dedup_compressed_clone(self):
+        '''
+         This is a clone volume test with source volume provisioning as dedup and compression as true.
+
+         Steps:
+         1. Create a volume with volume provisioning=dedup and compression=true.
+         2. Create a clone of this volume.
+         3. Inspect the cloned volume.
+         4. Verify the clone in 3par array.
+         5. Delete the clone and volume both.
+         6. Verify the removal of volumes in 3par array.
+        '''
         volume_name = helpers.random_name()
         clone_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -383,6 +449,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_volume_snapshot(self):
+        '''
+         This is a snapshot test.
+
+         Steps:
+         1. Create a volume.
+         2. Create a snapshot of this volume.
+         3. Inspect the snapshot.
+         4. Verify the snapshot in 3par array.
+         5. Delete the snapshot and volume both.
+         6. Verify the removal of volume and snapshot in 3par array.
+        '''
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -398,6 +475,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_snapshot_expiration_retention(self):
+        '''
+         This is a snapshot test with expiration and retention end period.
+
+         Steps:
+         1. Create a volume.
+         2. Create a snapshot of this volume with expiration and retention end period.
+         3. Inspect the snapshot.
+         4. Verify the snapshot in 3par array.
+         5. Delete the snapshot.
+         6. Verify the presence of snapshot in 3par array.
+        '''
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -414,6 +502,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                          retentionHours='5')
 
     def test_remove_snapshot_within_retention(self):
+        '''
+         This is a snapshot test with retention end period.
+
+         Steps:
+         1. Create a volume.
+         2. Create a snapshot of this volume with retention end period.
+         3. Inspect the snapshot.
+         4. Verify the snapshot in 3par array.
+         5. Delete the snapshot.
+         6. Verify the presence of snapshot in 3par array.
+        '''
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -437,6 +536,15 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                          retentionHours='1')
 
     def test_snapshot_retention_greater_than_expiration(self):
+        '''
+         This is a snapshot test with retention end period greater than expiration period.
+
+         Steps:
+         1. Create a volume.
+         2. Create a snapshot of this volume with retention end period greater than expiration period.
+         3. Verify the error.
+         4. Verify the absence of snapshot in 3par array.
+        '''
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -463,6 +571,17 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_snapshot_deleted(volume_name, snapshot_name)
 
     def test_snapshots_list(self):
+        '''
+         This is a snapshot list test.
+
+         Steps:
+         1. Create a volume.
+         2. Create a few snapshots of this volume with expiration and retention end period.
+         3. Inspect the snapshot.
+         4. Verify the snapshot in 3par array.
+         5. Delete all snapshots.
+         6. Verify the presence/absence of snapshot in 3par array.
+        '''
         volume_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
         snapshot_names = []
@@ -515,7 +634,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
-        self.hpe_volume_not_created(volume_name)
+        volume_list = self.hpe_list_volume()
+        self.assertIsNone(volume_list['Volumes'])
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_full_prov_compressed_volume(self):
@@ -535,7 +655,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
-        self.hpe_volume_not_created(volume_name)
+        volume_list = self.hpe_list_volume()
+        self.assertIsNone(volume_list['Volumes'])
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_dedup_prov_compressed_volume(self):
@@ -555,7 +676,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
-        self.hpe_volume_not_created(volume_name)
+        volume_list = self.hpe_list_volume()
+        self.assertIsNone(volume_list['Volumes'])
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_thin_prov_compressed_flashcache_volume(self):
