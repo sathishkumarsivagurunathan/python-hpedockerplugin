@@ -241,10 +241,14 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         mount_status2 = mountpoint.startswith( 'hpedocker-dm-uuid',14 )
         self.assertEqual(mount_status2, False)
 
-    def hpe_list_volume(self):
-        # List volumes
+    def hpe_volume_not_created(self, volume_name):
+        # Verify volume is not created
         volumes = self.client.volumes()
-        return volumes
+        number_volume=len(volumes['Volumes'])
+        volumes_present=[]
+        for i in range(number_volume):
+            volumes_present.append(volumes['Volumes'][i]['Name'])
+        self.assertNotIn(volume_name, volumes_present)
 
 
 class HPE3ParBackendVerification(BaseAPIIntegrationTest):
