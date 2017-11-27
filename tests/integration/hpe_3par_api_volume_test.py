@@ -617,7 +617,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_snapshot_deleted(volume_name, snapshot_names[1])
         self.hpe_verify_snapshot_created(volume_name, snapshot_names[2])
 
-    def test_thin_prov_compressed_volume(self):
+    def test_thin_compressed_volume_15GB(self):
         '''
            This is a volume create test with provisioning as 'thin' and compression enabled.
 
@@ -634,8 +634,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
-        volume_list = self.hpe_list_volume()
-        self.assertIsNone(volume_list['Volumes'])
+        self.hpe_volume_not_created(volume_name)
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_full_prov_compressed_volume(self):
@@ -655,11 +654,10 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
-        volume_list = self.hpe_list_volume()
-        self.assertIsNone(volume_list['Volumes'])
+        self.hpe_volume_not_created(volume_name)
         self.hpe_verify_volume_deleted(volume_name)
 
-    def test_dedup_prov_compressed_volume(self):
+    def test_dedup_compressed_volume_15GB(self):
         '''
            This is a volume create test with provisioning as 'dedup' and compression enabled.
 
@@ -676,8 +674,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
-        volume_list = self.hpe_list_volume()
-        self.assertIsNone(volume_list['Volumes'])
+        self.hpe_volume_not_created(volume_name)
         self.hpe_verify_volume_deleted(volume_name)
 
     def test_thin_prov_compressed_flashcache_volume(self):
