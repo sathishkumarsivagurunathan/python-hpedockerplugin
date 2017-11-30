@@ -244,12 +244,14 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
     def hpe_volume_not_created(self, volume_name):
         # Verify volume is not created
         volumes = self.client.volumes()
-        number_volume=len(volumes['Volumes'])
-        volumes_present=[]
-        for i in range(number_volume):
-            volumes_present.append(volumes['Volumes'][i]['Name'])
-        self.assertNotIn(volume_name, volumes_present)
-
+        if not isinstance(volumes['Volumes'], list):
+           pass
+        elif isinstance(volumes['Volumes'], list): 
+           number_volume=len(volumes['Volumes'])
+           volumes_present=[]
+           for i in range(number_volume):
+               volumes_present.append(volumes['Volumes'][i]['Name'])
+           self.assertNotIn(volume_name, volumes_present)
 
 class HPE3ParBackendVerification(BaseAPIIntegrationTest):
     """
