@@ -77,7 +77,6 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
            2. Create a host config file to setup container.
            3. Create a container and mount volume to it.
            4. Verify if VLUN is available in 3Par array.
-
         '''
         volume_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
@@ -623,6 +622,97 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         container.stop()
         container.remove()
 
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)
+
+    def test_revert_volume_from_snapshots(self):
+        '''
+            This is a reverting a volume from its snapshots test.
+
+            Steps:
+            1. Create a volume.
+            2. Create a container and mount volume to it.
+            3. Write data.
+            4. Create a snapshot without expiration period.
+            5. Write data again on volume.
+            6. Create a snapshot with expiration period.
+            7. Write data again on volume.
+            8. Promote volume to its 1st snapshot and verify the data.
+            9. Promote volume to its 2nd snapshot and verify the data.
+            10. Unmount the volume.
+            11. Verify the unmount in 3par array.
+            12. Delete all the snapshots, container and volume.
+            13. Verify the removal of snapshots and volume in 3par array.
+        '''
+        client = docker.from_env(version=TEST_API_VERSION)
+        volume_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        snapshot_names = []
+        i = 0; j = 0
+        for i in range(2):
+            snapshot_names.append(helpers.random_name())
+            self.tmp_volumes.append(volume_name + '/' + snapshot_names[i])
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
+                               size=THIN_SIZE, provisioning='thin')
+        container = client.containers.run(BUSYBOX, "sh", detach=True,
+                                          name=helpers.random_name(), tty=True, stdin_open=True,
+                                          volumes=[volume_name + ':/data1']
+        )
+        self.tmp_containers.append(container.id)
+        container.exec_run("sh -c 'echo \"snapshot_data1\" > /data1/test1'")
+        container.stop()
+        container.wait()
+
+        self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
+                                 snapshotOf=volume_name)
+
+        container.start()
+        container.exec_run("sh -c 'echo \"snapshot_data2\" > /data1/test2'")
+        container.stop()
+        container.wait()
+
+        self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
+                                 snapshotOf=volume_name, expirationHours='2')
+
+        container.start()
+        container.exec_run("sh -c 'echo \"snapshot_data3\" > /data1/test3'")
+        container.stop()
+        container.wait()
+        self.client.create_volume(name=snapshot_names[0], driver=HPE3PAR,
+                             driver_opts={'promote' : volume_name})
+
+        container.start()
+        assert container.exec_run("sh -c 'ls data1/'") == b"test1\n"
+        assert container.exec_run("sh -c 'cat /data1/test1'") == b"snapshot_data1\n"
+        container.exec_run("sh -c 'rm /data1/test1'")
+
+        container.stop()
+        container.wait()
+
+        self.client.create_volume(name=snapshot_names[1], driver=HPE3PAR,
+                             driver_opts={'promote': volume_name})
+        container.start()
+        assert container.exec_run("sh -c 'ls data1/'") == b"test1\ntest2\n"
+        assert container.exec_run("sh -c 'cat /data1/test1'") == b"snapshot_data1\n"
+        assert container.exec_run("sh -c 'cat /data1/test2'") == b"snapshot_data2\n"
+
+        container.stop()
+        container.wait()
+        container.remove()
+        self.hpe_verify_volume_unmount(volume_name)
+        for snapshot in snapshot_names:
+            self.hpe_delete_snapshot(volume_name, snapshot)
+            self.hpe_verify_snapshot_deleted(volume_name, snapshot)
+        inspect_volume_snapshot = self.client.inspect_volume(volume_name)
+        if 'Status' not in inspect_volume_snapshot:
+            pass
+        else:
+            snapshots = inspect_volume_snapshot['Status']['Snapshots']
+            snapshot_list = []
+            for j in range(len(snapshots)):
+                snapshot_list.append(snapshots[j]['Name'])
+            for snapshot in snapshot_names:
+                self.assertNotIn(snapshot, snapshot_list)
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
 
