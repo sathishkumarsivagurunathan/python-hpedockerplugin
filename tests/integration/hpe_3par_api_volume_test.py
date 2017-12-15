@@ -21,7 +21,6 @@ FULL_SIZE = cfg['volumes']['full_size']
 DEDUP_SIZE = cfg['volumes']['dedup_size']
 COMPRESS_SIZE = cfg['volumes']['compress_size']
 
-
 @requires_api_version('1.21')
 class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
@@ -68,7 +67,6 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             c.remove_plugin(HPE3PAR, force=True)
         except docker.errors.APIError:
             pass
-
 
     def test_thin_prov_volume(self):
         '''
@@ -630,7 +628,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.tmp_volumes.append(volume_name)
         try:
             volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
-                                        size="15", provisioning='thin', compression='true')
+                                        size='15', provisioning='thin', compression='true')
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
@@ -650,7 +648,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.tmp_volumes.append(volume_name)
         try:
             volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
-                                        size="16", provisioning='full', compression='true')
+                                        size='16', provisioning='full', compression='true')
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
@@ -669,8 +667,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         volume_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
         try:
-            volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
-                                        size="15", provisioning='dedup', compression='true')
+            self.hpe_create_volume(volume_name, driver=HPE3PAR,
+                                        size='15', provisioning='dedup', compression='true')
         except Exception as ex:
             resp = ex.status_code
             self.assertEqual(resp, 500)
@@ -721,3 +719,103 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
+    def test_volume_existent_qos(self):
+        '''
+           This is a volume create test with qosName as pre-created VVSet name.
+
+           Steps:
+           1. Create VVset and configure QoS rule in 3par array.
+           2. Create a volume with qosName.
+           2. Verify if volume is a member of vvset in 3Par array.
+           3. Inspect this volume.
+           4. Delete this volume.
+           5. Verify if volume is removed from vvset and deleted from 3Par array.
+        '''
+        volume_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        vvset_name = helpers.random_name()
+        self.hpe_create_verify_vvs_with_qos(vvs_name=vvset_name)
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR, qos_name=vvset_name)
+        self.hpe_verify_volume_created(volume_name, vvset_name)
+        self.hpe_inspect_volume(volume)
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)
+
+    def test_volume_non_existent_qos(self):
+        '''
+           This is a volume create test with qosName as VVSet name which does not exist in 3par array.
+
+           Steps:
+           1. Create a volume with qosName.
+           2. Error must be displayed.
+           3. Verify volume doesn't get created.
+        '''
+        volume_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        vvset_name = helpers.random_name()
+        try:
+            self.hpe_create_volume(volume_name, driver=HPE3PAR, qos_name=vvset_name)
+        except Exception as ex:
+            resp = ex.status_code
+            self.assertEqual(resp, 404)
+
+        self.hpe_volume_not_created(volume_name)
+        self.hpe_verify_volume_deleted(volume_name)
+
+    def test_volume_qos_with_flash_cache(self):
+        '''
+           This is a volume create test with flashcache, qosName as pre-created VVSet name.
+
+           Steps:
+           1. Create VVset and configure QoS rule in 3par array.
+           2. Create a volume with qosName, flash-cache and other driver options.
+           2. Verify if volume is a member of vvset in 3Par array.
+           3. Inspect this volume.
+           4. Delete this volume.
+           5. Verify if volume is removed from vvset and deleted from 3Par array.
+        '''
+        volume_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        vvset_name = helpers.random_name()
+        self.hpe_create_verify_vvs_with_qos(vvs_name=vvset_name)
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR, qos_name=vvset_name,
+                                        size=FULL_SIZE, flash_cache='true', provisioning='full')
+        self.hpe_verify_volume_created(volume_name, vvset_name,
+                                       size=FULL_SIZE, provisioning='full', flash_cache='true')
+        self.hpe_inspect_volume(volume)
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)
+
+    def test_clone_qos_name(self):
+        '''
+         This is a clone volume test with source volume with qos rule.
+
+         Steps:
+         1. Create a volume with volume provisioning as dedup, qosName and driver options.
+         2. Create a clone of this volume.
+         3. Inspect the cloned volume.
+         4. Verify the clone in 3par array.
+         5. Delete the clone and volume both.
+         6. Verify the removal of volumes in 3par array.
+        '''
+        volume_name = helpers.random_name()
+        clone_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        self.tmp_volumes.append(clone_name)
+        vvset_name = helpers.random_name()
+        self.hpe_create_verify_vvs_with_qos(vvs_name=vvset_name)
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR, qos_name=vvset_name,
+                                        size=DEDUP_SIZE, flash_cache='true', provisioning='dedup')
+        clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
+                                       cloneOf=volume_name)
+        sleep(120)
+        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(clone)
+        self.hpe_verify_volume_created(volume_name, vvset_name,
+                                       size=DEDUP_SIZE, provisioning='dedup', flash_cache='true')
+        self.hpe_verify_volume_created(clone_name, vvset_name,
+                                       size=DEDUP_SIZE, provisioning='dedup', flash_cache='true')
+        self.hpe_delete_volume(clone)
+        self.hpe_verify_volume_deleted(clone_name)
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)

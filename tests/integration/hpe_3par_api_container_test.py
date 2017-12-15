@@ -24,6 +24,7 @@ ETCD = cfg['etcd']['container']
 
 @requires_api_version('1.20')
 class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
+
     @classmethod
     def setUpClass(cls):
         c = docker.APIClient(
@@ -80,14 +81,16 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         '''
         volume_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
+        container_name= helpers.random_name()
         self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                size=THIN_SIZE, provisioning='thin')
         host_conf = self.hpe_create_host_config(volume_driver=HPE3PAR,
                                                 binds= volume_name + ':/data1')
         self.hpe_mount_volume(BUSYBOX, command='sh', detach=True,
                               tty=True, stdin_open=True,
-                              name=helpers.random_name(), host_config=host_conf
+                              name=container_name, host_config=host_conf
                               )
+        self.hpe_inspect_container_volume_mount(volume_name, container_name)
         # Verifying in 3par
         self.hpe_verify_volume_mount(volume_name)
 
@@ -105,16 +108,18 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         '''
         volume_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
+        container_name = helpers.random_name()
         self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                size=THIN_SIZE, provisioning='thin')
         host_conf = self.hpe_create_host_config(volume_driver=HPE3PAR,
                                                 binds= volume_name + ':/data1')
         self.hpe_unmount_volume(BUSYBOX, command='sh', detach=True,
-                                name=helpers.random_name(), tty=True, stdin_open=True,
+                                name=container_name, tty=True, stdin_open=True,
                                 host_config=host_conf
                                 )
         # Verifying in 3par
         self.hpe_verify_volume_unmount(volume_name)
+        self.hpe_inspect_container_volume_unmount(volume_name, container_name)
 
     def test_write_and_read_data(self):
         '''
@@ -313,11 +318,13 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                            tty=True, stdin_open=True
         )
         self.tmp_containers.append(container2.id)
+        self.hpe_inspect_container_volume_mount(volume_name, mounters[1])
         self.hpe_verify_volume_mount(volume_name)
         container2.exec_run("sh -c 'echo \"Both containers will use this.\" >> /data1/Example1.txt'")
         out1 = container2.exec_run("cat /data1/Example1.txt")
         self.assertEqual(out1, b'This volume will be shared between containers.\nBoth containers will use this.\n')
         container2.stop()
+        self.hpe_inspect_container_volume_unmount(volume_name, mounters[1])
         self.hpe_verify_volume_unmount(volume_name)
 
         container3 = client.containers.run(BUSYBOX, "sh", detach=True, name=mounters[2],
@@ -325,12 +332,14 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                            tty=True, stdin_open=True
         )
         self.tmp_containers.append(container3.id)
+        self.hpe_inspect_container_volume_mount(volume_name, mounters[2])
         self.hpe_verify_volume_mount(volume_name)
         out2 = container3.exec_run("cat /data1/Example1.txt")
         self.assertEqual(out2, b'This volume will be shared between containers.\nBoth containers will use this.\n')
         out3 = container3.exec_run("touch /data1/Example2.txt")
         self.assertEqual(out3, b'touch: /data1/Example2.txt: Read-only file system\n')
         container3.stop()
+        self.hpe_inspect_container_volume_unmount(volume_name, mounters[2])
         self.hpe_verify_volume_unmount(volume_name)
         container_list = client.containers.list(all=True)
         for ctnr in container_list:
@@ -462,11 +471,13 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         sleep(120)
         self.hpe_verify_volume_created(clone_name, size='100',
                                        provisioning='thin', clone=True)
+        container_name = helpers.random_name()
         container_clone = client.containers.run(BUSYBOX, "sh", detach=True,
-                                                name=helpers.random_name(), tty=True, stdin_open=True,
+                                                name= container_name, tty=True, stdin_open=True,
                                                 volumes=[clone_name + ':/data1']
         )
         sleep(10)
+        self.hpe_inspect_container_volume_mount(volume_name, container_name)
         self.hpe_verify_volume_mount(clone_name)
         assert container_clone.exec_run("sh -c 'cat /data1/test'") == b"cloned_data\n"
 
@@ -508,8 +519,9 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             self.tmp_volumes.append(volume_name + '/' + snapshot_names[i])
         volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                size=THIN_SIZE, provisioning='thin')
+        container_name = helpers.random_name()
         container = client.containers.run(BUSYBOX, "sh", detach=True,
-                                          name=helpers.random_name(), tty=True, stdin_open=True,
+                                          name=container_name, tty=True, stdin_open=True,
                                           volumes=[volume_name + ':/data1']
         )
         self.tmp_containers.append(container.id)
@@ -534,6 +546,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         container.stop()
         container.wait()
         container.remove()
+        self.hpe_inspect_container_volume_unmount(volume_name, container_name)
         self.hpe_verify_volume_unmount(volume_name)
         for snapshot in snapshot_names:
             self.hpe_delete_snapshot(volume_name, snapshot)
@@ -586,6 +599,11 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_verify_volume_unmount(volume_name)
         container.start()
         assert container.exec_run("cat /insidecontainer/test") == b"hello compressed volume\n"
+        container.stop()
+        container.wait()
+        container.remove()
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)
 
     def test_delete_compressed_volume(self):
         '''
@@ -716,6 +734,52 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
 
+    def test_mount_unmount_volume_with_qos(self):
+        '''
+           This is a test to verify mount and unmount operations of qos enabled volume.
+
+           Steps:
+           1. Create volume with qosName and verify if volume got created in docker host and 3PAR array
+           2. Create a container and mount volume to it.
+           3. Inspect containers and verify the volume is mounted or not
+           4. Verify if VLUN is available in 3Par array.
+           5. Write data on volume
+           6. Unmount the volume
+           8. Verify if VLUN entry is not available in 3Par array.
+           9. Read the data from the volume
+           10. Unmount volume and remove container.
+           11. Delete volume and verify it is not present in 3par array.
+
+        '''
+        client = docker.from_env(version=TEST_API_VERSION)
+        volume_name = helpers.random_name()
+        container_name = helpers.random_name()
+        self.tmp_volumes.append(volume_name)
+        vvset_name = helpers.random_name()
+        self.hpe_create_verify_vvs_with_qos(vvs_name=vvset_name)
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR, qos_name=vvset_name,
+                                        size=THIN_SIZE, provisioning='thin')
+        container = client.containers.run(BUSYBOX,"sh", detach=True,
+                                          name=container_name, tty=True, stdin_open=True,
+                                          volumes=[volume_name + ':/insidecontainer']
+        )
+        self.tmp_containers.append(container.id)
+        self.hpe_verify_volume_created(volume_name, vvset_name,
+                                       size=THIN_SIZE, provisioning='thin')
+        self.hpe_inspect_container_volume_mount(volume_name,container_name)
+        self.hpe_verify_volume_mount(volume_name)
+        container.exec_run("sh -c 'echo \"QoS rule\" > /insidecontainer/test'")
+        container.stop()
+        container.wait()
+        self.hpe_inspect_container_volume_unmount(volume_name,container_name)
+        self.hpe_verify_volume_unmount(volume_name)
+        container.start()
+        assert container.exec_run("cat /insidecontainer/test") == b"QoS rule\n"
+        container.stop()
+        container.wait()
+        container.remove()
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)
 
 
 

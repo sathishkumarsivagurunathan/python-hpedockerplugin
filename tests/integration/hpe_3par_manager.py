@@ -10,6 +10,7 @@ import urllib3
 from etcdutil import EtcdUtil
 from hpe3parclient import exceptions as exc
 from hpe3parclient.client import HPE3ParClient
+from oslo_utils import units
 
 # Importing test data from YAML config file
 #with open("tests/integration/testdata/test_config.yml", 'r') as ymlfile:
@@ -26,6 +27,13 @@ CLIENT_KEY = cfg['etcd']['client_key']
 HPE3PAR_API_URL = cfg['backend']['3Par_api_url']
 PORTS_ZONES = cfg['multipath']['ports_zones']
 SNAP_CPG = cfg['snapshot']['snap_cpg']
+DOMAIN = cfg['qos']['domain']
+MIN_IO = cfg['qos']['min_io']
+MAX_IO = cfg['qos']['max_io']
+MIN_BW = cfg['qos']['min_bw']
+MAX_BW = cfg['qos']['max_bw']
+LATENCY = cfg['qos']['latency']
+PRIORITY = cfg['qos']['priority']
 
 @requires_api_version('1.21')
 class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
@@ -39,6 +47,8 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         )
         if 'flash_cache' in kwargs:
             kwargs['flash-cache'] = kwargs.pop('flash_cache')
+        if 'qos_name' in kwargs:
+            kwargs['qos-name'] = kwargs.pop('qos_name')
 
         # Create a volume
         docker_volume = client.create_volume(name=name, driver=driver,
@@ -52,7 +62,7 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         else:
             self.assertEqual(docker_volume['Driver'], HPE3PAR)
         # Verify all volume optional parameters in docker managed plugin system
-        driver_options = ['size', 'provisioning', 'flash-cache', 'compression', 'cloneOf']
+        driver_options = ['size', 'provisioning', 'flash-cache', 'compression', 'cloneOf', 'qos-name']
 
         for option in driver_options:
             if option in kwargs:
@@ -220,12 +230,12 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         # Inspect container
         inspect_container = self.client.inspect_container(container_name)
         mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith( 'hpedocker-dm-uuid',109 )
+        mount_status = mount_source.startswith('hpedocker-', 109)
         self.assertEqual(mount_status, True)
         # Inspect volume
         inspect_volume = self.client.inspect_volume(volume_name)
         mountpoint = inspect_volume['Mountpoint']
-        mount_status2 = mountpoint.startswith( 'hpedocker-dm-uuid',14 )
+        mount_status2 = mountpoint.startswith('hpedocker-', 14)
         self.assertEqual(mount_status2, True)
 
     def hpe_inspect_container_volume_unmount(self, volume_name, container_name):
@@ -233,12 +243,12 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         # Inspect container
         inspect_container = self.client.inspect_container(container_name)
         mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith( 'hpedocker-dm-uuid',109 )
+        mount_status = mount_source.startswith('hpedocker-', 109)
         self.assertEqual(mount_status, False)
         # Inspect volume
         inspect_volume = self.client.inspect_volume(volume_name)
         mountpoint = inspect_volume['Mountpoint']
-        mount_status2 = mountpoint.startswith( 'hpedocker-dm-uuid',14 )
+        mount_status2 = mountpoint.startswith('hpedocker-', 14)
         self.assertEqual(mount_status2, False)
 
     def hpe_volume_not_created(self, volume_name):
@@ -264,7 +274,7 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
         hpe_3par_cli.login('3paradm', '3pardata')
         return hpe_3par_cli
 
-    def hpe_verify_volume_created(self, volume_name, **kwargs):
+    def hpe_verify_volume_created(self, volume_name, vvs_name=None, **kwargs):
 
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         hpe3par_cli = self._hpe_get_3par_client_login()
@@ -296,7 +306,15 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
         else:
             self.assertEqual(hpe3par_volume['provisioningType'], 2)
         if 'flash_cache' in kwargs:
-            if kwargs['flash_cache'] == 'true':
+            if vvs_name:
+                vvset = hpe3par_cli.getVolumeSet(vvs_name)
+                # Ensure flash-cache-policy is set on the vvset
+                self.assertEqual(vvset['flashCachePolicy'], 1)
+                # Ensure the created volume is a member of the vvset
+                self.assertIn(backend_volume_name,
+                              [vv_name for vv_name in vvset['setmembers']]
+                )
+            elif kwargs['flash_cache'] == 'true':
                 vvset_name = utils.get_3par_vvset_name(etcd_volume_id)
                 vvset = hpe3par_cli.getVolumeSet(vvset_name)
                 # Ensure flash-cache-policy is set on the vvset
@@ -318,6 +336,17 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
         if 'clone' in kwargs:
             self.assertEqual(hpe3par_volume['snapCPG'], SNAP_CPG)
             self.assertEqual(hpe3par_volume['copyType'], 1)
+        if vvs_name:
+            vvset = hpe3par_cli.getVolumeSet(vvs_name)
+            self.assertNotEqual(vvset, None)
+            self.assertEqual(vvset['qosEnabled'], True)
+            # Ensure QoS rule is set on the vvset
+            qos = hpe3par_cli.queryQoSRule(vvs_name)
+            self.assertNotEqual(qos, None)
+            # Ensure the created volume is a member of the vvset
+            self.assertIn(backend_volume_name,
+                          [vv_name for vv_name in vvset['setmembers']]
+            )
         hpe3par_cli.logout()
 
     def hpe_verify_volume_deleted(self, volume_name):
@@ -459,4 +488,56 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
         hpe3par_volume = hpe3par_cli.getVolume(backend_volume_name)
         hpe3par_cli.logout()
         return hpe3par_volume
+
+    def hpe_create_verify_vvs_with_qos(self, vvs_name):
+
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        hpe3par_cli = self._hpe_get_3par_client_login()
+
+        hpe3par_cli.createVolumeSet(vvs_name, domain=DOMAIN)
+
+        qosRule = {}
+        if MIN_IO:
+            qosRule['ioMinGoal'] = int(MIN_IO)
+            if MAX_IO is None:
+                qosRule['ioMaxLimit'] = int(MIN_IO)
+        if MAX_IO:
+            qosRule['ioMaxLimit'] = int(MAX_IO)
+            if MIN_IO is None:
+                qosRule['ioMinGoal'] = int(MAX_IO)
+        if MIN_BW:
+            qosRule['bwMinGoalKB'] = int(MIN_BW) * units.Ki
+            if MAX_BW is None:
+                qosRule['bwMaxLimitKB'] = int(MIN_BW) * units.Ki
+        if MAX_BW:
+            qosRule['bwMaxLimitKB'] = int(MAX_BW) * units.Ki
+            if MIN_BW is None:
+                qosRule['bwMinGoalKB'] = int(MAX_BW) * units.Ki
+        if LATENCY:
+            qosRule['latencyGoal'] = int(LATENCY)
+        if PRIORITY:
+            qosRule['priority'] = int(PRIORITY)
+
+        try:
+            hpe3par_cli.createQoSRules(vvs_name, qosRule)
+        except Exception as ex:
+            raise ex
+
+        vvset = hpe3par_cli.getVolumeSet(vvs_name)
+        self.assertNotEqual(vvset, None)
+        self.assertEqual( vvset['qosEnabled'], True)
+        # Presence of QoS in VVS
+        # at the backend with the QoS values
+        try:
+            qos = hpe3par_cli.queryQoSRule(vvs_name)
+            self.assertNotEqual(qos, None)
+        except exc.HTTPNotFound as e:
+        # In case vvs is present, QoS is NOT set in the backend
+        # Hence we HTTPNotFound exception is caught here which
+        # needs to be ignored
+            raise e
+        hpe3par_cli.logout()
+
+
+
 

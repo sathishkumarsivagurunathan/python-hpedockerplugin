@@ -82,7 +82,7 @@ def wait_on_condition(condition, delay=0.1, timeout=40):
 
 
 def random_name():
-    return u'dockerpytest_{0:x}'.format(random.getrandbits(64))
+    return u'docker_{0:x}'.format(random.getrandbits(32))
 
 
 def force_leave_swarm(client):
