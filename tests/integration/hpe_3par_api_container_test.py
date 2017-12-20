@@ -462,6 +462,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           name=helpers.random_name(), tty=True, stdin_open=True,
                                           volumes=[volume_name + ':/data1']
         )
+        self.tmp_containers.append(container_volume.id)
         sleep(10)
         container_volume.exec_run("sh -c 'touch /data1/test'")
         container_volume.exec_run("sh -c 'echo \"cloned_data\" > /data1/test'")
@@ -476,6 +477,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                                 name= container_name, tty=True, stdin_open=True,
                                                 volumes=[clone_name + ':/data1']
         )
+        self.tmp_containers.append(container_clone.id)
         sleep(10)
         self.hpe_inspect_container_volume_mount(volume_name, container_name)
         self.hpe_verify_volume_mount(clone_name)
