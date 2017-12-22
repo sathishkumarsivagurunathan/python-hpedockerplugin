@@ -757,7 +757,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             self.hpe_create_volume(volume_name, driver=HPE3PAR, qos_name=vvset_name)
         except Exception as ex:
             resp = ex.status_code
-            self.assertEqual(resp, 404)
+            self.assertNotEqual(resp, 200)
 
         self.hpe_volume_not_created(volume_name)
         self.hpe_verify_volume_deleted(volume_name)
