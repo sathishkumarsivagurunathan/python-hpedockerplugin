@@ -463,10 +463,11 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/data1']
         )
         self.tmp_containers.append(container_volume.id)
-        sleep(10)
         container_volume.exec_run("sh -c 'touch /data1/test'")
         container_volume.exec_run("sh -c 'echo \"cloned_data\" > /data1/test'")
-        sleep(10)
+        container_volume.stop()
+        container_volume.wait()
+        container_volume.remove()
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
         sleep(120)
@@ -478,17 +479,14 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                                 volumes=[clone_name + ':/data1']
         )
         self.tmp_containers.append(container_clone.id)
-        sleep(10)
-        self.hpe_inspect_container_volume_mount(volume_name, container_name)
+        self.hpe_inspect_container_volume_mount(clone_name, container_name)
         self.hpe_verify_volume_mount(clone_name)
         assert container_clone.exec_run("sh -c 'cat /data1/test'") == b"cloned_data\n"
 
-        containers = [container_volume, container_clone]
-        for container in containers:
-            self.tmp_containers.append(container.id)
-            container.stop()
-            container.wait()
-            container.remove()
+        container_clone.stop()
+        container_clone.wait()
+        self.hpe_inspect_container_volume_unmount(clone_name, container_name)
+        container_clone.remove()
         self.hpe_verify_volume_unmount(volume_name)
         self.hpe_verify_volume_unmount(clone_name)
         self.hpe_delete_volume(volume)
@@ -547,9 +545,9 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             self.assertIn(snapshot, snapshot_list)
         container.stop()
         container.wait()
-        container.remove()
         self.hpe_inspect_container_volume_unmount(volume_name, container_name)
         self.hpe_verify_volume_unmount(volume_name)
+        container.remove()
         for snapshot in snapshot_names:
             self.hpe_delete_snapshot(volume_name, snapshot)
             self.hpe_verify_snapshot_deleted(volume_name, snapshot)

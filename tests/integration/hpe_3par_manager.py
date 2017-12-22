@@ -136,7 +136,14 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
 
     def hpe_delete_snapshot(self, volume_name, snapshot_name, force=False, retention=None):
         # Delete a volume
-        self.client.remove_volume(volume_name + '/' + snapshot_name, force=force)
+        if retention:
+            try:
+                self.client.remove_volume(volume_name + '/' + snapshot_name, force=force)
+            except docker.errors.APIError as ex:
+                resp = ex.status_code
+                self.assertEqual(resp, 500)
+        else:
+            self.client.remove_volume(volume_name + '/' + snapshot_name, force=force)
         result = self.client.inspect_volume(volume_name)
         if 'Status' not in result:
             pass
