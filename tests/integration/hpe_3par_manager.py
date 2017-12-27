@@ -401,13 +401,17 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
                 if 'expirationHours' in kwargs:
                     hpe_snapshot_expiration = int(hpe3par_snapshot['expirationTimeSec']) - int(
                         hpe3par_snapshot['creationTimeSec'])
+                    hpe_snap_expiration_list = [hpe_snapshot_expiration, hpe_snapshot_expiration-1, 
+                                                hpe_snapshot_expiration-2]
                     docker_snapshot_expiration = int(kwargs['expirationHours']) * 60 * 60
-                    self.assertEqual(hpe_snapshot_expiration, docker_snapshot_expiration)
+                    self.assertIn(docker_snapshot_expiration, hpe_snap_expiration_list)
                 if 'retentionHours' in kwargs:
                     hpe_snapshot_retention = int(hpe3par_snapshot['retentionTimeSec']) - int(
                         hpe3par_snapshot['creationTimeSec'])
+                    hpe_snap_retention_list = [hpe_snapshot_retention, hpe_snapshot_retention-1, 
+                                               hpe_snapshot_retention-2]
                     docker_snapshot_retention = int(kwargs['retentionHours']) * 60 * 60
-                    self.assertEqual(hpe_snapshot_retention, docker_snapshot_retention)
+                    self.assertIn(docker_snapshot_retention, hpe_snap_retention_list)
         hpe3par_cli.logout()
 
     def hpe_verify_snapshot_deleted(self, volume_name, snapshot_name):
