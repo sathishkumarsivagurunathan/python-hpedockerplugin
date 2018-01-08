@@ -401,7 +401,8 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
                 if 'expirationHours' in kwargs:
                     hpe_snapshot_expiration = int(hpe3par_snapshot['expirationTimeSec']) - int(
                         hpe3par_snapshot['creationTimeSec'])
-                    hpe_snap_expiration_list = [hpe_snapshot_expiration, hpe_snapshot_expiration+1, 
+                    hpe_snap_expiration_list = [hpe_snapshot_expiration-2, hpe_snapshot_expiration-1, 
+                                                hpe_snapshot_expiration, hpe_snapshot_expiration+1, 
                                                 hpe_snapshot_expiration+2]
                     docker_snapshot_expiration = int(kwargs['expirationHours']) * 60 * 60
                     self.assertIn(docker_snapshot_expiration, hpe_snap_expiration_list)
