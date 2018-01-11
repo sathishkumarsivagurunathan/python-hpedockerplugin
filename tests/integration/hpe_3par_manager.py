@@ -409,7 +409,8 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
                 if 'retentionHours' in kwargs:
                     hpe_snapshot_retention = int(hpe3par_snapshot['retentionTimeSec']) - int(
                         hpe3par_snapshot['creationTimeSec'])
-                    hpe_snap_retention_list = [hpe_snapshot_retention, hpe_snapshot_retention+1, 
+                    hpe_snap_retention_list = [hpe_snapshot_retention-2, hpe_snapshot_retention-1, 
+                                               hpe_snapshot_retention, hpe_snapshot_retention+1, 
                                                hpe_snapshot_retention+2]
                     docker_snapshot_retention = int(kwargs['retentionHours']) * 60 * 60
                     self.assertIn(docker_snapshot_retention, hpe_snap_retention_list)
