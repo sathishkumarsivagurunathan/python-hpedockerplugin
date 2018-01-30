@@ -552,7 +552,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             self.hpe_delete_snapshot(volume_name, snapshot)
             self.hpe_verify_snapshot_deleted(volume_name, snapshot)
         inspect_volume_snapshot = self.client.inspect_volume(volume_name)
-        if 'Status' not in inspect_volume_snapshot:
+        if 'Snapshots' not in inspect_volume_snapshot['Status']:
             pass
         else:
             snapshots = inspect_volume_snapshot['Status']['Snapshots']
@@ -722,7 +722,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             self.hpe_delete_snapshot(volume_name, snapshot)
             self.hpe_verify_snapshot_deleted(volume_name, snapshot)
         inspect_volume_snapshot = self.client.inspect_volume(volume_name)
-        if 'Status' not in inspect_volume_snapshot:
+        if 'Snapshots' not in inspect_volume_snapshot['Status']:
             pass
         else:
             snapshots = inspect_volume_snapshot['Status']['Snapshots']

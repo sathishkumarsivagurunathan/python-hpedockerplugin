@@ -85,7 +85,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                         size=THIN_SIZE, provisioning='thin')
         self.hpe_verify_volume_created(name, size=THIN_SIZE,
                                        provisioning='thin')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(THIN_SIZE),
+                                provisioning='thin')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -107,7 +108,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # Verifying in 3par array
         self.hpe_verify_volume_created(name, size=FULL_SIZE,
                                        provisioning='full')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(FULL_SIZE),
+                                provisioning='full')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -129,7 +131,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # Verifying in 3par array
         self.hpe_verify_volume_created(name, size=THIN_SIZE,
                                        flash_cache='true')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(THIN_SIZE),
+                                flash_cache='true')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -151,7 +154,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # Verifying in 3par array
         self.hpe_verify_volume_created(name, size=DEDUP_SIZE,
                                        provisioning='dedup')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(DEDUP_SIZE),
+                                provisioning='dedup')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -174,7 +178,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # Verifying in 3par array
         self.hpe_verify_volume_created(name, size=COMPRESS_SIZE,
                                        provisioning='thin', compression='true')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(COMPRESS_SIZE),
+                                provisioning='thin', compression='true')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -196,7 +201,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # Verifying in 3par array
         self.hpe_verify_volume_created(name, size=COMPRESS_SIZE,
                                        provisioning='dedup', compression='true')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(COMPRESS_SIZE),
+                                provisioning='dedup', compression='true')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -322,7 +328,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        size='20', cloneOf=volume_name)
         sleep(150)
-        self.hpe_inspect_volume(clone)
+        self.hpe_inspect_volume(clone, size=20,
+                                provisioning='full')
         self.hpe_verify_volume_created(clone_name, size='20',
                                        provisioning='full', clone=True)
         self.hpe_delete_volume(clone)
@@ -351,7 +358,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
         sleep(120)
-        self.hpe_inspect_volume(clone)
+        self.hpe_inspect_volume(clone, size=int(DEDUP_SIZE),
+                                provisioning='dedup')
         self.hpe_verify_volume_created(clone_name, size=DEDUP_SIZE,
                                        provisioning='dedup', clone=True)
         self.hpe_delete_volume(clone)
@@ -380,7 +388,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
         sleep(150)
-        self.hpe_inspect_volume(clone)
+        self.hpe_inspect_volume(clone, size=int(THIN_SIZE),
+                                flash_cache='true')
         self.hpe_verify_volume_created(clone_name, size=THIN_SIZE,
                                        flash_cache='true', clone=True)
         self.hpe_delete_volume(clone)
@@ -409,7 +418,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
         sleep(150)
-        self.hpe_inspect_volume(clone)
+        self.hpe_inspect_volume(clone, size=int(COMPRESS_SIZE),
+                                compression='true')
         self.hpe_verify_volume_created(clone_name, size=COMPRESS_SIZE, clone=True,
                                        provisioning='thin', compression='true')
         self.hpe_delete_volume(clone)
@@ -438,7 +448,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
         sleep(150)
-        self.hpe_inspect_volume(clone)
+        self.hpe_inspect_volume(clone, size=int(COMPRESS_SIZE),
+                                compression='true', provisioning='dedup')
         self.hpe_verify_volume_created(clone_name, size=COMPRESS_SIZE, clone=True,
                                        provisioning='dedup', compression='true')
         self.hpe_delete_volume(clone)
@@ -465,7 +476,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                         size=THIN_SIZE, provisioning='thin')
         self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
-                                            snapshotOf=volume_name)
+                                 snapshotOf=volume_name)
         self.hpe_verify_snapshot_created(volume_name, snapshot_name)
         self.hpe_delete_snapshot(volume_name, snapshot_name)
         self.hpe_verify_snapshot_deleted(volume_name, snapshot_name)
@@ -557,7 +568,7 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             resp = ex.status_code
             self.assertEqual(resp, 500)
         inspect_volume_snapshot = self.client.inspect_volume(volume_name)
-        if 'Status' not in inspect_volume_snapshot:
+        if 'Snapshots' not in inspect_volume_snapshot['Status']:
             pass
         else:
             snapshots = inspect_volume_snapshot['Status']['Snapshots']
@@ -693,7 +704,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # Verifying in 3par array
         self.hpe_verify_volume_created(name, size=COMPRESS_SIZE,
                                        provisioning='thin', compression='true', flash_cache='true')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(COMPRESS_SIZE),
+                                provisioning='thin', compression='true', flash_cache='true')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -715,7 +727,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # Verifying in 3par array
         self.hpe_verify_volume_created(name, size=COMPRESS_SIZE,
                                        provisioning='dedup', compression='true', flash_cache='true')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(COMPRESS_SIZE),
+                                provisioning='dedup', compression='true', flash_cache='true')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(name)
 
@@ -782,7 +795,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                         size=FULL_SIZE, flash_cache='true', provisioning='full')
         self.hpe_verify_volume_created(volume_name, vvset_name,
                                        size=FULL_SIZE, provisioning='full', flash_cache='true')
-        self.hpe_inspect_volume(volume)
+        self.hpe_inspect_volume(volume, size=int(FULL_SIZE),
+                                flash_cache='true', provisioning='full')
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
 
@@ -809,8 +823,10 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
         sleep(120)
-        self.hpe_inspect_volume(volume)
-        self.hpe_inspect_volume(clone)
+        self.hpe_inspect_volume(volume, size=int(DEDUP_SIZE),
+                                flash_cache='true', provisioning='dedup')
+        self.hpe_inspect_volume(clone, size=int(DEDUP_SIZE),
+                                flash_cache='true', provisioning='dedup')
         self.hpe_verify_volume_created(volume_name, vvset_name,
                                        size=DEDUP_SIZE, provisioning='dedup', flash_cache='true')
         self.hpe_verify_volume_created(clone_name, vvset_name,

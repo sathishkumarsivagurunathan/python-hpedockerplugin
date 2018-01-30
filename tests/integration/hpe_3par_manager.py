@@ -83,10 +83,29 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         else:
             self.assertEqual(volumes['Volumes'], None)
 
-    def hpe_inspect_volume(self, volume):
+    def hpe_inspect_volume(self, volume, **kwargs):
         # Inspect a volume.
         inspect_volume = self.client.inspect_volume(volume['Name'])
-        self.assertEqual(volume, inspect_volume)
+        self.assertEqual(volume['Name'], inspect_volume['Name'])
+        self.assertEqual(volume['Driver'], inspect_volume['Driver'])
+        self.assertEqual(volume['Options'], inspect_volume['Options'])
+        self.assertIn('Status', inspect_volume)
+        self.assertIn('volume_detail', inspect_volume['Status'])
+
+        volume_details = ['size', 'provisioning', 'flash_cache', 'compression']
+
+        for option in volume_details:
+            if option in kwargs:
+                self.assertIn(option, inspect_volume['Status']['volume_detail'])
+                self.assertEqual(inspect_volume['Status']['volume_detail'][option], kwargs[option])
+            else:
+                if option == 'size':
+                    self.assertEqual(inspect_volume['Status']['volume_detail'][option], 100)
+                elif option == 'provisioning':
+                    self.assertEqual(inspect_volume['Status']['volume_detail'][option], 'thin')
+                else:
+                    self.assertEqual(inspect_volume['Status']['volume_detail'][option], None)
+
         return inspect_volume
 
     def hpe_create_snapshot(self, snapshot_name, driver, **kwargs):
@@ -145,7 +164,7 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         else:
             self.client.remove_volume(volume_name + '/' + snapshot_name, force=force)
         result = self.client.inspect_volume(volume_name)
-        if 'Status' not in result:
+        if 'Snapshots' not in result['Status']:
             pass
         else:
             snapshots = result['Status']['Snapshots']
