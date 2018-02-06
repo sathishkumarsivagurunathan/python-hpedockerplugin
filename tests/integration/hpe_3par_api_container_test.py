@@ -24,7 +24,7 @@ ETCD = cfg['etcd']['container']
 
 @requires_api_version('1.20')
 class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
-
+    '''
     @classmethod
     def setUpClass(cls):
         c = docker.APIClient(
@@ -68,7 +68,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             c.remove_plugin(HPE3PAR, force=True)
         except docker.errors.APIError:
             pass
-
+    '''
     def test_volume_mount(self):
         '''
            This is a volume mount test.
@@ -143,8 +143,11 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/insidecontainer']
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         container.exec_run("sh -c 'echo \"hello\" > /insidecontainer/test'")
-        assert container.exec_run("cat /insidecontainer/test") == b"hello\n"
+        ExecResult = container.exec_run("cat /insidecontainer/test")
+        self.assertEqual(ExecResult.exit_code, 0)
+        self.assertEqual(ExecResult.output, b"hello\n")
         container.stop()
 
     def test_write_data_get_file_archive_from_container(self):
@@ -172,7 +175,8 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                          host_config=host_conf
                                          )
         self.client.start(ctnr)
-        self.client.wait(ctnr)
+        exitcode = self.client.wait(ctnr)['StatusCode']
+        assert exitcode == 0
         with tempfile.NamedTemporaryFile() as destination:
             strm, stat = self.client.get_archive(ctnr, '/vol1/file.txt')
             for d in strm:
@@ -203,7 +207,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                          command='sh -c "touch /data1/file.txt"',
                                          host_config=host_conf)
         self.client.start(ctnr)
-        res = self.client.wait(ctnr)
+        res = self.client.wait(ctnr)['StatusCode']
         self.assertNotEqual(res, 0)
 
     def test_remove_unused_volumes(self):
@@ -265,11 +269,15 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/insidecontainer']
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         container.exec_run("sh -c 'echo \"hello\" > /insidecontainer/test'")
         container.stop()
         container.start()
+        # assert container.wait()['StatusCode'] == 0
 
-        assert container.exec_run("cat /insidecontainer/test") == b"hello\n"
+        ExecResult = container.exec_run("cat /insidecontainer/test")
+        self.assertEqual(ExecResult.exit_code, 0)
+        self.assertEqual(ExecResult.output, b"hello\n")
 
         try:
             self.client.remove_volume(volume_name)
@@ -310,6 +318,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                            tty=True, stdin_open=True
         )
         self.tmp_containers.append(container1.id)
+        # assert container1.wait()['StatusCode'] == 0
         container1.exec_run("sh -c 'echo \"This volume will be shared between containers.\" > /data1/Example1.txt'")
         container1.stop()
 
@@ -318,11 +327,14 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                            tty=True, stdin_open=True
         )
         self.tmp_containers.append(container2.id)
+        # assert container2.wait()['StatusCode'] == 0
         self.hpe_inspect_container_volume_mount(volume_name, mounters[1])
         self.hpe_verify_volume_mount(volume_name)
         container2.exec_run("sh -c 'echo \"Both containers will use this.\" >> /data1/Example1.txt'")
-        out1 = container2.exec_run("cat /data1/Example1.txt")
-        self.assertEqual(out1, b'This volume will be shared between containers.\nBoth containers will use this.\n')
+        ExecResult1 = container2.exec_run("cat /data1/Example1.txt")
+        self.assertEqual(ExecResult1.output,
+                         b'This volume will be shared between containers.\nBoth containers will use this.\n')
+        self.assertEqual(ExecResult1.exit_code, 0)
         container2.stop()
         self.hpe_inspect_container_volume_unmount(volume_name, mounters[1])
         self.hpe_verify_volume_unmount(volume_name)
@@ -332,12 +344,19 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                            tty=True, stdin_open=True
         )
         self.tmp_containers.append(container3.id)
+        # assert container3.wait()['StatusCode'] == 0
         self.hpe_inspect_container_volume_mount(volume_name, mounters[2])
         self.hpe_verify_volume_mount(volume_name)
-        out2 = container3.exec_run("cat /data1/Example1.txt")
-        self.assertEqual(out2, b'This volume will be shared between containers.\nBoth containers will use this.\n')
-        out3 = container3.exec_run("touch /data1/Example2.txt")
-        self.assertEqual(out3, b'touch: /data1/Example2.txt: Read-only file system\n')
+        ExecResult2 = container3.exec_run("cat /data1/Example1.txt")
+        self.assertEqual(ExecResult2.output,
+                         b'This volume will be shared between containers.\nBoth containers will use this.\n')
+        self.assertEqual(ExecResult2.exit_code, 0)
+
+        ExecResult3 = container3.exec_run("touch /data1/Example2.txt")
+        self.assertEqual(ExecResult3.output,
+                         b'touch: /data1/Example2.txt: Read-only file system\n')
+        self.assertNotEqual(ExecResult3.exit_code, 0)
+
         container3.stop()
         self.hpe_inspect_container_volume_unmount(volume_name, mounters[2])
         self.hpe_verify_volume_unmount(volume_name)
@@ -375,10 +394,10 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/data1']
         )
         self.tmp_containers.append(container1.id)
+        # assert container1.wait()['StatusCode'] == 0
         container1.exec_run("dd if=/dev/urandom of=/data1/random bs=10M count=1")
         container1.exec_run("sh -c 'md5sum /data1/random > /data1/checksum'")
         container1.stop()
-        container1.wait()
         self.hpe_verify_volume_unmount(volume_name)
 
         container2 = client.containers.run(BUSYBOX, "sh", detach=True,
@@ -386,9 +405,11 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                            volumes=[volume_name + ':/data1']
         )
         self.tmp_containers.append(container2.id)
+        # assert container2.wait()['StatusCode'] == 0
         self.hpe_verify_volume_mount(volume_name)
-        out = container2.exec_run("md5sum -cw /data1/checksum")
-        self.assertEqual(out, b'/data1/random: OK\n')
+        ExecResult = container2.exec_run("md5sum -cw /data1/checksum")
+        self.assertEqual(ExecResult.output, b'/data1/random: OK\n')
+        self.assertEqual(ExecResult.exit_code, 0)
         container1.stop()
 
     def test_clone_mount_unmount_delete(self):
@@ -463,10 +484,10 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/data1']
         )
         self.tmp_containers.append(container_volume.id)
+        # assert container_volume.wait()['StatusCode'] == 0
         container_volume.exec_run("sh -c 'touch /data1/test'")
         container_volume.exec_run("sh -c 'echo \"cloned_data\" > /data1/test'")
         container_volume.stop()
-        container_volume.wait()
         container_volume.remove()
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
@@ -479,12 +500,13 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                                 volumes=[clone_name + ':/data1']
         )
         self.tmp_containers.append(container_clone.id)
+        # assert container_clone.wait()['StatusCode'] == 0
         self.hpe_inspect_container_volume_mount(clone_name, container_name)
         self.hpe_verify_volume_mount(clone_name)
-        assert container_clone.exec_run("sh -c 'cat /data1/test'") == b"cloned_data\n"
-
+        ExecResult = container_clone.exec_run("sh -c 'cat /data1/test'")
+        self.assertEqual(ExecResult.exit_code, 0)
+        self.assertEqual(ExecResult.output, b"cloned_data\n")
         container_clone.stop()
-        container_clone.wait()
         self.hpe_inspect_container_volume_unmount(clone_name, container_name)
         container_clone.remove()
         self.hpe_verify_volume_unmount(volume_name)
@@ -525,6 +547,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/data1']
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         container.exec_run("sh -c 'echo \"snapshot_data\" > /data1/test'")
 
         self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
@@ -544,7 +567,6 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         for snapshot in snapshot_names:
             self.assertIn(snapshot, snapshot_list)
         container.stop()
-        container.wait()
         self.hpe_inspect_container_volume_unmount(volume_name, container_name)
         self.hpe_verify_volume_unmount(volume_name)
         container.remove()
@@ -591,6 +613,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/insidecontainer']
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         self.hpe_inspect_container_volume_mount(volume_name,container_name)
         self.hpe_verify_volume_mount(volume_name)
         container.exec_run("sh -c 'echo \"hello compressed volume\" > /insidecontainer/test'")
@@ -598,9 +621,10 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_inspect_container_volume_unmount(volume_name,container_name)
         self.hpe_verify_volume_unmount(volume_name)
         container.start()
-        assert container.exec_run("cat /insidecontainer/test") == b"hello compressed volume\n"
+        ExecResult = container.exec_run("cat /insidecontainer/test")
+        self.assertEqual(ExecResult.exit_code, 0)
+        self.assertEqual(ExecResult.output, b"hello compressed volume\n")
         container.stop()
-        container.wait()
         container.remove()
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
@@ -631,6 +655,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/insidecontainer']
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         try:
             self.client.remove_volume(volume_name)
         except Exception as ex:
@@ -677,9 +702,9 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/data1']
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         container.exec_run("sh -c 'echo \"snapshot_data1\" > /data1/test1'")
         container.stop()
-        container.wait()
 
         self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
                                  snapshotOf=volume_name)
@@ -687,7 +712,6 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         container.start()
         container.exec_run("sh -c 'echo \"snapshot_data2\" > /data1/test2'")
         container.stop()
-        container.wait()
 
         self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
                                  snapshotOf=volume_name, expirationHours='2')
@@ -695,27 +719,36 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         container.start()
         container.exec_run("sh -c 'echo \"snapshot_data3\" > /data1/test3'")
         container.stop()
-        container.wait()
         self.client.create_volume(name=snapshot_names[0], driver=HPE3PAR,
                              driver_opts={'promote' : volume_name})
 
         container.start()
-        assert container.exec_run("sh -c 'ls data1/'") == b"test1\n"
-        assert container.exec_run("sh -c 'cat /data1/test1'") == b"snapshot_data1\n"
-        container.exec_run("sh -c 'rm /data1/test1'")
+        # assert container.wait()['StatusCode'] == 0
+        ExecResult1 = container.exec_run("sh -c 'ls data1/'")
+        self.assertEqual(ExecResult1.exit_code, 0)
+        self.assertEqual(ExecResult1.output, b"test1\n")
+        ExecResult2 = container.exec_run("sh -c 'cat /data1/test1'")
+        self.assertEqual(ExecResult2.exit_code, 0)
+        self.assertEqual(ExecResult2.output, b"snapshot_data1\n")
 
+        container.exec_run("sh -c 'rm /data1/test1'")
         container.stop()
-        container.wait()
 
         self.client.create_volume(name=snapshot_names[1], driver=HPE3PAR,
                              driver_opts={'promote': volume_name})
         container.start()
-        assert container.exec_run("sh -c 'ls data1/'") == b"test1\ntest2\n"
-        assert container.exec_run("sh -c 'cat /data1/test1'") == b"snapshot_data1\n"
-        assert container.exec_run("sh -c 'cat /data1/test2'") == b"snapshot_data2\n"
+
+        ExecResult3 = container.exec_run("sh -c 'ls data1/'")
+        self.assertEqual(ExecResult3.exit_code, 0)
+        self.assertEqual(ExecResult3.output, b"test1\ntest2\n")
+        ExecResult4 = container.exec_run("sh -c 'cat /data1/test1'")
+        self.assertEqual(ExecResult4.exit_code, 0)
+        self.assertEqual(ExecResult4.output, b"snapshot_data1\n")
+        ExecResult5 = container.exec_run("sh -c 'cat /data1/test2'")
+        self.assertEqual(ExecResult5.exit_code, 0)
+        self.assertEqual(ExecResult5.output, b"snapshot_data2\n")
 
         container.stop()
-        container.wait()
         container.remove()
         self.hpe_verify_volume_unmount(volume_name)
         for snapshot in snapshot_names:
@@ -764,19 +797,20 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           volumes=[volume_name + ':/insidecontainer']
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         self.hpe_verify_volume_created(volume_name, vvset_name,
                                        size=THIN_SIZE, provisioning='thin')
         self.hpe_inspect_container_volume_mount(volume_name,container_name)
         self.hpe_verify_volume_mount(volume_name)
         container.exec_run("sh -c 'echo \"QoS rule\" > /insidecontainer/test'")
         container.stop()
-        container.wait()
         self.hpe_inspect_container_volume_unmount(volume_name,container_name)
         self.hpe_verify_volume_unmount(volume_name)
         container.start()
-        assert container.exec_run("cat /insidecontainer/test") == b"QoS rule\n"
+        ExecResult = container.exec_run("cat /insidecontainer/test")
+        self.assertEqual(ExecResult.exit_code, 0)
+        self.assertEqual(ExecResult.output, b"QoS rule\n")
         container.stop()
-        container.wait()
         container.remove()
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)

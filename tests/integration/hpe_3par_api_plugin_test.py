@@ -263,9 +263,12 @@ class PluginTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
                                           tty=True, stdin_open=True
         )
         self.tmp_containers.append(container.id)
+        # assert container.wait()['StatusCode'] == 0
         self.hpe_verify_volume_mount(volume_name)
         container.exec_run("sh -c 'echo \"hello\" > /insidecontainer/test'")
-        assert container.exec_run("cat /insidecontainer/test") == b"hello\n"
+        ExecResult = container.exec_run("cat /insidecontainer/test")
+        self.assertEqual(ExecResult.exit_code, 0)
+        self.assertEqual(ExecResult.output, b"hello\n")
         container.stop()
         container.wait()
         container.remove()
