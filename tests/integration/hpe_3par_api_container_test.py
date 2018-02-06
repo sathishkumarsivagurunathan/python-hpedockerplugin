@@ -24,7 +24,7 @@ ETCD = cfg['etcd']['container']
 
 @requires_api_version('1.20')
 class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
-    '''
+
     @classmethod
     def setUpClass(cls):
         c = docker.APIClient(
@@ -68,7 +68,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             c.remove_plugin(HPE3PAR, force=True)
         except docker.errors.APIError:
             pass
-    '''
+
     def test_volume_mount(self):
         '''
            This is a volume mount test.
