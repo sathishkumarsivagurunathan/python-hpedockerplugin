@@ -11,6 +11,7 @@ from etcdutil import EtcdUtil
 from hpe3parclient import exceptions as exc
 from hpe3parclient.client import HPE3ParClient
 from oslo_utils import units
+from time import sleep
 
 # Importing test data from YAML config file
 #with open("tests/integration/testdata/test_config.yml", 'r') as ymlfile:
@@ -313,6 +314,14 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
         backend_volume_name = utils.get_3par_vol_name(etcd_volume_id)
         # Get volume details from 3Par array
         hpe3par_volume = hpe3par_cli.getVolume(backend_volume_name)
+
+        # Loop to wait for completion of cloning
+        count = 0
+        while hpe3par_volume['copyType'] == 2 and count < 60:
+            hpe3par_volume = hpe3par_cli.getVolume(backend_volume_name)
+            count = count + 1
+            sleep(10)
+
         # Verify volume and its properties in 3Par array
         self.assertEqual(hpe3par_volume['name'], backend_volume_name)
         self.assertEqual(hpe3par_volume['copyType'], 1)
@@ -568,6 +577,14 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
         # Hence we HTTPNotFound exception is caught here which
         # needs to be ignored
             raise e
+        hpe3par_cli.logout()
+
+    def hpe_remove_vvs_qos(self, vvs_name):
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        hpe3par_cli = self._hpe_get_3par_client_login()
+
+        hpe3par_cli.deleteQoSRules(vvs_name)
+        hpe3par_cli.deleteVolumeSet(vvs_name)
         hpe3par_cli.logout()
 
 

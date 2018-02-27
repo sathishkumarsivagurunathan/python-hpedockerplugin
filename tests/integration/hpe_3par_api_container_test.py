@@ -434,7 +434,9 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         volume = self.hpe_create_volume(volume_name, driver=HPE3PAR)
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
-        sleep(120)
+
+        self.hpe_verify_volume_created(clone_name, size='100',
+                                       provisioning='thin', clone=True)
         host_conf = self.hpe_create_host_config(volume_driver=HPE3PAR,
                                                 binds= clone_name + ':/data1')
         mount = self.hpe_mount_volume(BUSYBOX, command='sh', detach=True,
@@ -491,7 +493,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         container_volume.remove()
         clone = self.hpe_create_volume(clone_name, driver=HPE3PAR,
                                        cloneOf=volume_name)
-        sleep(120)
+
         self.hpe_verify_volume_created(clone_name, size='100',
                                        provisioning='thin', clone=True)
         container_name = helpers.random_name()
@@ -814,6 +816,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         container.remove()
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
+        self.hpe_remove_vvs_qos(vvs_name=vvset_name)
 
 
 
