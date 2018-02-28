@@ -32,7 +32,7 @@ class BaseIntegrationTest(unittest.TestCase):
         self.tmp_configs = []
 
     def tearDown(self):
-        client = docker.from_env(version=TEST_API_VERSION)
+        client = docker.from_env(version=TEST_API_VERSION, timeout=600)
         for img in self.tmp_imgs:
             try:
                 client.api.remove_image(img)

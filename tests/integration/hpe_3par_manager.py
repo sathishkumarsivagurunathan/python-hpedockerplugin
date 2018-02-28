@@ -254,6 +254,7 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         return container_info
 
     def hpe_inspect_container_volume_mount(self, volume_name, container_name):
+        sleep(20)
         # Inspect container
         inspect_container = self.client.inspect_container(container_name)
         mount_source = inspect_container['Mounts'][0]['Source']
@@ -266,7 +267,7 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         self.assertEqual(mount_status2, True)
 
     def hpe_inspect_container_volume_unmount(self, volume_name, container_name):
-
+        sleep(20)
         # Inspect container
         inspect_container = self.client.inspect_container(container_name)
         mount_source = inspect_container['Mounts'][0]['Source']
