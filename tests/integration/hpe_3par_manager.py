@@ -255,6 +255,10 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
 
     def hpe_inspect_container_volume_mount(self, volume_name, container_name):
         # Inspect container
+        inspect_container = self.client.inspect_container(container_name)
+        mount_source = inspect_container['Mounts'][0]['Source']
+        mount_status = mount_source.startswith('hpedocker-', 109)
+        count = 0
         while mount_status == False and count < 25:
            inspect_container = self.client.inspect_container(container_name)
            mount_source = inspect_container['Mounts'][0]['Source']
@@ -270,6 +274,10 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
 
     def hpe_inspect_container_volume_unmount(self, volume_name, container_name):
         # Inspect container
+        inspect_container = self.client.inspect_container(container_name)
+        mount_source = inspect_container['Mounts'][0]['Source']
+        mount_status = mount_source.startswith('hpedocker-', 109)
+        count = 0
         while mount_status == True and count < 25:
            inspect_container = self.client.inspect_container(container_name)
            mount_source = inspect_container['Mounts'][0]['Source']
