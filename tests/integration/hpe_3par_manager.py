@@ -254,11 +254,13 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         return container_info
 
     def hpe_inspect_container_volume_mount(self, volume_name, container_name):
-        sleep(20)
         # Inspect container
-        inspect_container = self.client.inspect_container(container_name)
-        mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith('hpedocker-', 109)
+        while mount_status == False and count < 25:
+           inspect_container = self.client.inspect_container(container_name)
+           mount_source = inspect_container['Mounts'][0]['Source']
+           mount_status = mount_source.startswith('hpedocker-', 109)
+           count = count + 1
+           sleep(5)
         self.assertEqual(mount_status, True)
         # Inspect volume
         inspect_volume = self.client.inspect_volume(volume_name)
@@ -267,11 +269,13 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         self.assertEqual(mount_status2, True)
 
     def hpe_inspect_container_volume_unmount(self, volume_name, container_name):
-        sleep(20)
         # Inspect container
-        inspect_container = self.client.inspect_container(container_name)
-        mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith('hpedocker-', 109)
+        while mount_status == True and count < 25:
+           inspect_container = self.client.inspect_container(container_name)
+           mount_source = inspect_container['Mounts'][0]['Source']
+           mount_status = mount_source.startswith('hpedocker-', 109)
+           count = count + 1
+           sleep(5)
         self.assertEqual(mount_status, False)
         # Inspect volume
         inspect_volume = self.client.inspect_volume(volume_name)
