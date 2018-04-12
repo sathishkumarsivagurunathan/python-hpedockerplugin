@@ -3,7 +3,7 @@ import docker
 import yaml
 
 from .base import BaseAPIIntegrationTest, TEST_API_VERSION
-from ..helpers import requires_api_version
+from .helpers import requires_api_version
 
 import utils
 import urllib3
@@ -63,7 +63,8 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         else:
             self.assertEqual(docker_volume['Driver'], HPE3PAR)
         # Verify all volume optional parameters in docker managed plugin system
-        driver_options = ['size', 'provisioning', 'flash-cache', 'compression', 'cloneOf', 'qos-name']
+        driver_options = ['size', 'provisioning', 'flash-cache', 'compression', 'cloneOf',
+                          'qos-name', 'mountConflictDelay']
 
         for option in driver_options:
             if option in kwargs:
@@ -93,7 +94,7 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         self.assertIn('Status', inspect_volume)
         self.assertIn('volume_detail', inspect_volume['Status'])
 
-        volume_details = ['size', 'provisioning', 'flash_cache', 'compression']
+        volume_details = ['size', 'provisioning', 'flash_cache', 'compression', 'mountConflictDelay']
 
         for option in volume_details:
             if option in kwargs:
@@ -104,6 +105,8 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
                     self.assertEqual(inspect_volume['Status']['volume_detail'][option], 100)
                 elif option == 'provisioning':
                     self.assertEqual(inspect_volume['Status']['volume_detail'][option], 'thin')
+                elif option == 'mountConflictDelay':
+                    self.assertEqual(inspect_volume['Status']['volume_detail'][option], 30)
                 else:
                     self.assertEqual(inspect_volume['Status']['volume_detail'][option], None)
 
@@ -124,12 +127,9 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
 
         volumes = self.client.volumes()
         # Verify if created snapshot is not available docker volume lists
-        if volumes['Volumes']:
-            self.assertNotIn(snapshot_creation, volumes['Volumes'])
-        else:
-            self.assertEqual(volumes['Volumes'], None)
+        self.assertIn(snapshot_creation, volumes['Volumes'])
 
-        inspect_volume_snapshot = self.client.inspect_volume(kwargs['snapshotOf'])
+        inspect_volume_snapshot = self.client.inspect_volume(kwargs['virtualCopyOf'])
         snapshots = inspect_volume_snapshot['Status']['Snapshots']
         snapshot_list = []
         i = 0
@@ -137,33 +137,67 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
             snapshot_list.append(snapshots[i]['Name'])
         self.assertIn(snapshot_name, snapshot_list)
 
-        inspect_snapshot = self.client.inspect_volume(kwargs['snapshotOf'] + '/' + snapshot_name)
-        snapshot_options = ['snapshotOf', 'expirationHours', 'retentionHours']
+        return snapshot_creation
+
+    def hpe_inspect_snapshot(self, snapshot, **kwargs):
+        # Inspect a snapshot
+        inspect_snapshot = self.client.inspect_volume(kwargs['snapshot_name'])
+        snapshot_options = ['virtualCopyOf', 'expirationHours', 'retentionHours', 'mountConflictDelay']
 
         for option in snapshot_options:
             if option in kwargs:
-                self.assertIn(option, snapshot_creation['Options'])
-                self.assertEqual(snapshot_creation['Options'][option], kwargs[option])
+                self.assertIn(option, snapshot['Options'])
+                self.assertEqual(snapshot['Options'][option], kwargs[option])
             else:
-                self.assertNotIn(option, snapshot_creation['Options'])
+                self.assertNotIn(option, snapshot['Options'])
+
+        self.assertEqual(inspect_snapshot['Status']['snap_detail']['is_snap'],
+                         True)
+        self.assertEqual(inspect_snapshot['Status']['snap_detail']['parent_volume'],
+                         kwargs['virtualCopyOf'])
+        if 'size' in kwargs:
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['size'],
+                             int(kwargs['size']))
+        else:
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['size'],
+                             100)
+
+        if 'mountConflictDelay' in kwargs:
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['mountConflictDelay'],
+                             int(kwargs['mountConflictDelay']))
+        else:
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['mountConflictDelay'],
+                             30)
+
         if 'expirationHours' in kwargs:
-            self.assertEqual(inspect_snapshot['Status']['Settings']['expirationHours'],
-                                 int(kwargs['expirationHours']))
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['expiration_hours'],
+                             int(kwargs['expirationHours']))
+        else:
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['expiration_hours'], None)
+
         if 'retentionHours' in kwargs:
-            self.assertEqual(inspect_snapshot['Status']['Settings']['retentionHours'],
-                                 int(kwargs['retentionHours']))
-        return snapshot_creation
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['retention_hours'],
+                             int(kwargs['retentionHours']))
+        else:
+            self.assertEqual(inspect_snapshot['Status']['snap_detail']['retention_hours'], None)
+
+        '''
+        snap_details = ['compression', 'flash_cache', 'provisioning']
+
+        for index in snap_details:
+            self.assertEqual(inspect_snapshot['Status']['snap_detail'][index], None)
+        '''
 
     def hpe_delete_snapshot(self, volume_name, snapshot_name, force=False, retention=None):
         # Delete a volume
         if retention:
             try:
-                self.client.remove_volume(volume_name + '/' + snapshot_name, force=force)
+                self.client.remove_volume(snapshot_name, force=force)
             except docker.errors.APIError as ex:
                 resp = ex.status_code
                 self.assertEqual(resp, 500)
         else:
-            self.client.remove_volume(volume_name + '/' + snapshot_name, force=force)
+            self.client.remove_volume(snapshot_name, force=force)
         result = self.client.inspect_volume(volume_name)
         if 'Snapshots' not in result['Status']:
             pass
@@ -511,6 +545,43 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
 
         try:
             vlun = hpe3par_cli.getVLUN(backend_volume_name)
+            # Verify VLUN is not present in 3Par array.
+            self.assertEqual(vlun, None)
+        except exc.HTTPNotFound:
+            hpe3par_cli.logout()
+            return
+        hpe3par_cli.logout()
+
+    def hpe_verify_snapshot_mount(self, snapshot_name):
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        hpe3par_cli = self._hpe_get_3par_client_login()
+        # Get snapshot details from etcd service
+        et = EtcdUtil(ETCD_HOST, ETCD_PORT, CLIENT_CERT, CLIENT_KEY)
+        etcd_snapshot = et.get_vol_byname(snapshot_name)
+        etcd_snapshot_id = etcd_snapshot['id']
+        # Get snapshot details and VLUN details from 3Par array
+        backend_snapshot_name = utils.get_3par_snapshot_name(etcd_snapshot_id)
+        vluns = hpe3par_cli.getVLUNs()
+        vlun_cnt = 0
+        # VLUN Verification
+        for member in vluns['members']:
+            if member['volumeName'] == backend_snapshot_name and member['active']:
+                vlun_cnt += 1
+        self.assertEqual(vlun_cnt, PORTS_ZONES)
+        hpe3par_cli.logout()
+
+    def hpe_verify_snapshot_unmount(self, snapshot_name):
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        hpe3par_cli = self._hpe_get_3par_client_login()
+        # Get snapshot details from etcd service
+        et = EtcdUtil(ETCD_HOST, ETCD_PORT, CLIENT_CERT, CLIENT_KEY)
+        etcd_snapshot = et.get_vol_byname(snapshot_name)
+        etcd_snapshot_id = etcd_snapshot['id']
+        # Get snapshot details and VLUN details from 3Par array
+        backend_snapshot_name = utils.get_3par_snapshot_name(etcd_snapshot_id)
+
+        try:
+            vlun = hpe3par_cli.getVLUN(backend_snapshot_name)
             # Verify VLUN is not present in 3Par array.
             self.assertEqual(vlun, None)
         except exc.HTTPNotFound:

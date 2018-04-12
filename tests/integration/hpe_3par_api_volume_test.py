@@ -2,8 +2,8 @@ import pytest
 import docker
 import yaml
 from .base import TEST_API_VERSION, BUSYBOX
-from .. import helpers
-from ..helpers import requires_api_version
+from . import helpers
+from .helpers import requires_api_version
 from hpe_3par_manager import HPE3ParBackendVerification,HPE3ParVolumePluginTest
 
 # Importing test data from YAML config file
@@ -489,11 +489,13 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
         self.tmp_volumes.append(volume_name)
-        self.tmp_volumes.append(volume_name + '/' + snapshot_name)
+        self.tmp_volumes.append(snapshot_name)
         volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                         size=THIN_SIZE, provisioning='thin')
-        self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
-                                 snapshotOf=volume_name)
+        snapshot = self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
+                                            virtualCopyOf=volume_name)
+        self.hpe_inspect_snapshot(snapshot, snapshot_name=snapshot_name,
+                                  virtualCopyOf=volume_name, size=THIN_SIZE)
         self.hpe_verify_snapshot_created(volume_name, snapshot_name)
         self.hpe_delete_snapshot(volume_name, snapshot_name)
         self.hpe_verify_snapshot_deleted(volume_name, snapshot_name)
@@ -514,13 +516,16 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         '''
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
+        self.tmp_volumes.append(snapshot_name)
         self.tmp_volumes.append(volume_name)
-        self.tmp_volumes.append(volume_name + '/' + snapshot_name)
         self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                         size=FULL_SIZE, provisioning='full')
-        self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
-                                            snapshotOf=volume_name, expirationHours='10',
-                                            retentionHours='5')
+        snapshot = self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
+                                 virtualCopyOf=volume_name, expirationHours='10',
+                                 retentionHours='5')
+        self.hpe_inspect_snapshot(snapshot, snapshot_name=snapshot_name,
+                                  virtualCopyOf=volume_name, size=FULL_SIZE,
+                                  expirationHours='10', retentionHours='5')
         self.hpe_verify_snapshot_created(volume_name, snapshot_name, expirationHours='10',
                                          retentionHours='5')
         self.hpe_delete_snapshot(volume_name, snapshot_name, retention=True)
@@ -541,12 +546,15 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         '''
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
+        self.tmp_volumes.append(snapshot_name)
         self.tmp_volumes.append(volume_name)
-        self.tmp_volumes.append(volume_name + '/' + snapshot_name)
         self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                         size=THIN_SIZE, flash_cache='true')
-        self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
-                                            snapshotOf=volume_name, retentionHours='1')
+        snapshot = self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
+                                 virtualCopyOf=volume_name, retentionHours='1')
+        self.hpe_inspect_snapshot(snapshot, snapshot_name=snapshot_name,
+                                  virtualCopyOf=volume_name, size=THIN_SIZE,
+                                  retentionHours='1')
         self.hpe_delete_snapshot(volume_name, snapshot_name, retention=True)
         inspect_volume_snapshot = self.client.inspect_volume(volume_name)
         snapshots = inspect_volume_snapshot['Status']['Snapshots']
@@ -556,8 +564,8 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             snapshot_list.append(snapshots[i]['Name'])
         self.assertIn(snapshot_name, snapshot_list)
 
-        inspect_snapshot = self.client.inspect_volume(volume_name + '/' + snapshot_name)
-        self.assertEqual(inspect_snapshot['Status']['Settings']['retentionHours'], 1)
+        inspect_snapshot = self.client.inspect_volume(snapshot_name)
+        self.assertEqual(inspect_snapshot['Status']['snap_detail']['retention_hours'], 1)
         self.hpe_verify_snapshot_created(volume_name, snapshot_name,
                                          retentionHours='1')
 
@@ -573,13 +581,13 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         '''
         volume_name = helpers.random_name()
         snapshot_name = helpers.random_name()
+        self.tmp_volumes.append(snapshot_name)
         self.tmp_volumes.append(volume_name)
-        self.tmp_volumes.append(volume_name + '/' + snapshot_name)
         self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                         size=THIN_SIZE, provisioning='thin')
         try:
             self.hpe_create_snapshot(snapshot_name, driver=HPE3PAR,
-                                     snapshotOf=volume_name, expirationHours='4',
+                                     virtualCopyOf=volume_name, expirationHours='4',
                                      retentionHours='5')
         except docker.errors.APIError as ex:
             resp = ex.status_code
@@ -609,22 +617,30 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
          6. Verify the presence/absence of snapshot in 3par array.
         '''
         volume_name = helpers.random_name()
-        self.tmp_volumes.append(volume_name)
         snapshot_names = []
         i = 0; j = 0
         for i in range(3):
             snapshot_names.append(helpers.random_name())
-            self.tmp_volumes.append(volume_name + '/' + snapshot_names[i])
+            self.tmp_volumes.append(snapshot_names[i])
+        self.tmp_volumes.append(volume_name)
         self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                size=COMPRESS_SIZE, provisioning='dedup',
                                compression='true')
-        self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
-                                 snapshotOf=volume_name)
-        self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
-                                 snapshotOf=volume_name, expirationHours='2')
-        self.hpe_create_snapshot(snapshot_names[2], driver=HPE3PAR,
-                                 snapshotOf=volume_name, expirationHours='6',
-                                 retentionHours='3')
+        snapshot1 = self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
+                                             virtualCopyOf=volume_name)
+        snapshot2 = self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
+                                             virtualCopyOf=volume_name, expirationHours='2')
+        snapshot3 = self.hpe_create_snapshot(snapshot_names[2], driver=HPE3PAR,
+                                             virtualCopyOf=volume_name, expirationHours='6',
+                                             retentionHours='3')
+        self.hpe_inspect_snapshot(snapshot1, snapshot_name=snapshot_names[0],
+                                  virtualCopyOf=volume_name, size=COMPRESS_SIZE)
+        self.hpe_inspect_snapshot(snapshot2, snapshot_name=snapshot_names[1],
+                                  virtualCopyOf=volume_name, size=COMPRESS_SIZE,
+                                  expirationHours='2')
+        self.hpe_inspect_snapshot(snapshot3, snapshot_name=snapshot_names[2],
+                                  virtualCopyOf=volume_name, size=COMPRESS_SIZE,
+                                  expirationHours='6', retentionHours='3')
         self.hpe_verify_snapshot_created(volume_name, snapshot_names[0])
         self.hpe_verify_snapshot_created(volume_name, snapshot_names[1], expirationHours='2')
         self.hpe_verify_snapshot_created(volume_name, snapshot_names[2], expirationHours='6',
@@ -855,3 +871,24 @@ class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
         self.hpe_remove_vvs_qos(vvs_name=vvset_name)
+
+    def test_mountConflictDelay_volume(self):
+        '''
+               This is a volume create test with provisioning as 'thin'.
+
+               Steps:
+               1. Create a volume with mountConflictDelay=60.
+               2. Verify if volume and its properties are present in 3Par array.
+               3. Inspect this volume.
+               4. Delete this volume.
+               5. Verify if volume is removed from 3Par array.
+        '''
+        name = helpers.random_name()
+        self.tmp_volumes.append(name)
+        volume = self.hpe_create_volume(name, driver=HPE3PAR,
+                                        size=THIN_SIZE, mountConflictDelay='60')
+        self.hpe_verify_volume_created(name, size=THIN_SIZE)
+        self.hpe_inspect_volume(volume, size=int(THIN_SIZE),
+                                mountConflictDelay=60)
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(name)

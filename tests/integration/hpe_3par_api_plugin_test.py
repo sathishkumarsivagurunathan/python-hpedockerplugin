@@ -3,8 +3,8 @@ import pytest
 import yaml
 
 from .base import BaseAPIIntegrationTest, TEST_API_VERSION, BUSYBOX
-from .. import helpers
-from ..helpers import requires_api_version
+from . import helpers
+from .helpers import requires_api_version
 from hpe_3par_manager import HPE3ParBackendVerification,HPE3ParVolumePluginTest
 import pdb
 

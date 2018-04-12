@@ -6,8 +6,8 @@ from time import sleep
 import six
 
 from .base import TEST_API_VERSION, BUSYBOX
-from .. import helpers
-from ..helpers import requires_api_version
+from . import helpers
+from .helpers import requires_api_version
 from hpe_3par_manager import HPE3ParBackendVerification,HPE3ParVolumePluginTest
 
 # Importing test data from YAML config file
@@ -300,11 +300,12 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
            1. Create volume and verify if volume got created in docker host and 3PAR array
            2. Create a host config file to setup container.
            3. Create a container1 and mount volume to it with command to create a file in 3Par volume.
-           4. Stop container1.
-           5. Create and start container2 with --volumes-from option mounting the volume from container1.
-           6. Write data from container2 and verify the data of container1.
-           7. Stop container2.
-           8. Create and start container3 with --volumes-from option mounting the volume from container1 with read-only mode.
+           4. Create and start container2 with --volumes-from option mounting the volume from container1.
+           5. Write data from container2 and verify the data of container1.
+           6. Create and start container3 with --volumes-from option mounting the volume from container1 with read-only mode.
+           7. Stop container1, container2 & container3.
+           8. Remove all containers.
+           9. Delete volume and verify removal from 3par array.
         '''
 
         client = docker.from_env(version=TEST_API_VERSION)
@@ -320,7 +321,6 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.tmp_containers.append(container1.id)
         # assert container1.wait()['StatusCode'] == 0
         container1.exec_run("sh -c 'echo \"This volume will be shared between containers.\" > /data1/Example1.txt'")
-        container1.stop()
 
         container2 = client.containers.run(BUSYBOX, "sh", detach=True, name=mounters[1],
                                            volumes_from=mounters[0],
@@ -335,9 +335,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.assertEqual(ExecResult1.output,
                          b'This volume will be shared between containers.\nBoth containers will use this.\n')
         self.assertEqual(ExecResult1.exit_code, 0)
-        container2.stop()
-        self.hpe_inspect_container_volume_unmount(volume_name, mounters[1])
-        self.hpe_verify_volume_unmount(volume_name)
+
 
         container3 = client.containers.run(BUSYBOX, "sh", detach=True, name=mounters[2],
                                            volumes_from=mounters[0] + ':ro',
@@ -356,6 +354,12 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.assertEqual(ExecResult3.output,
                          b'touch: /data1/Example2.txt: Read-only file system\n')
         self.assertNotEqual(ExecResult3.exit_code, 0)
+
+        container1.stop()
+        self.hpe_verify_volume_mount(volume_name)
+        container2.stop()
+        self.hpe_inspect_container_volume_mount(volume_name, mounters[1])
+        self.hpe_verify_volume_mount(volume_name)
 
         container3.stop()
         self.hpe_inspect_container_volume_unmount(volume_name, mounters[2])
@@ -535,12 +539,12 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
          '''
         client = docker.from_env(version=TEST_API_VERSION)
         volume_name = helpers.random_name()
-        self.tmp_volumes.append(volume_name)
         snapshot_names = []
         i = 0; j = 0; k = 0
         for i in range(3):
             snapshot_names.append(helpers.random_name())
-            self.tmp_volumes.append(volume_name + '/' + snapshot_names[i])
+            self.tmp_volumes.append(snapshot_names[i])
+        self.tmp_volumes.append(volume_name)
         volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                size=THIN_SIZE, provisioning='thin')
         container_name = helpers.random_name()
@@ -552,12 +556,20 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         # assert container.wait()['StatusCode'] == 0
         container.exec_run("sh -c 'echo \"snapshot_data\" > /data1/test'")
 
-        self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
-                                 snapshotOf=volume_name)
-        self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
-                                 snapshotOf=volume_name, expirationHours='2')
-        self.hpe_create_snapshot(snapshot_names[2], driver=HPE3PAR,
-                                 snapshotOf=volume_name, expirationHours='6')
+        snapshot1 = self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
+                                             virtualCopyOf=volume_name)
+        snapshot2 = self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
+                                             virtualCopyOf=volume_name, expirationHours='2')
+        snapshot3 = self.hpe_create_snapshot(snapshot_names[2], driver=HPE3PAR,
+                                             virtualCopyOf=volume_name, expirationHours='6')
+        self.hpe_inspect_snapshot(snapshot1, snapshot_name=snapshot_names[0],
+                                  virtualCopyOf=volume_name, size=THIN_SIZE)
+        self.hpe_inspect_snapshot(snapshot2, snapshot_name=snapshot_names[1],
+                                  virtualCopyOf=volume_name, size=THIN_SIZE,
+                                  expirationHours='2')
+        self.hpe_inspect_snapshot(snapshot3, snapshot_name=snapshot_names[2],
+                                  virtualCopyOf=volume_name, size=THIN_SIZE,
+                                  expirationHours='6')
         self.hpe_verify_snapshot_created(volume_name, snapshot_names[0])
         self.hpe_verify_snapshot_created(volume_name, snapshot_names[1], expirationHours='2')
         self.hpe_verify_snapshot_created(volume_name, snapshot_names[2], expirationHours='6')
@@ -670,7 +682,7 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
 
-    def test_revert_volume_from_snapshots(self):
+    def test_mount_unmount_snapshots(self):
         '''
             This is a reverting a volume from its snapshots test.
 
@@ -678,82 +690,98 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
             1. Create a volume.
             2. Create a container and mount volume to it.
             3. Write data.
-            4. Create a snapshot without expiration period.
+            4. Create snapshot1 without expiration period.
             5. Write data again on volume.
-            6. Create a snapshot with expiration period.
+            6. Create snapshot2 with expiration period.
             7. Write data again on volume.
-            8. Promote volume to its 1st snapshot and verify the data.
-            9. Promote volume to its 2nd snapshot and verify the data.
-            10. Unmount the volume.
+            8. Mount snapshot1 and verify the data.
+            9. Mount snapshot2 and verify the data.
+            10. Unmount the volume, snapshot1 and snapshot2.
             11. Verify the unmount in 3par array.
             12. Delete all the snapshots, container and volume.
             13. Verify the removal of snapshots and volume in 3par array.
         '''
         client = docker.from_env(version=TEST_API_VERSION)
         volume_name = helpers.random_name()
-        self.tmp_volumes.append(volume_name)
         snapshot_names = []
         i = 0; j = 0
         for i in range(2):
             snapshot_names.append(helpers.random_name())
-            self.tmp_volumes.append(volume_name + '/' + snapshot_names[i])
+            self.tmp_volumes.append(snapshot_names[i])
+        self.tmp_volumes.append(volume_name)
+
+        container_names = []
+        k = 0
+        for k in range(3):
+            container_names.append(helpers.random_name())
+
         volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
                                size=THIN_SIZE, provisioning='thin')
-        container = client.containers.run(BUSYBOX, "sh", detach=True,
-                                          name=helpers.random_name(), tty=True, stdin_open=True,
+        container_volume = client.containers.run(BUSYBOX, "sh", detach=True,
+                                          name=container_names[0], tty=True, stdin_open=True,
                                           volumes=[volume_name + ':/data1']
         )
-        self.tmp_containers.append(container.id)
+        self.tmp_containers.append(container_volume.id)
         # assert container.wait()['StatusCode'] == 0
-        container.exec_run("sh -c 'echo \"snapshot_data1\" > /data1/test1'")
-        container.stop()
+        container_volume.exec_run("sh -c 'echo \"snapshot_data1\" > /data1/test1'")
+        container_volume.stop()
 
         self.hpe_create_snapshot(snapshot_names[0], driver=HPE3PAR,
-                                 snapshotOf=volume_name)
+                                 virtualCopyOf=volume_name)
 
-        container.start()
-        container.exec_run("sh -c 'echo \"snapshot_data2\" > /data1/test2'")
-        container.stop()
+        container_snapshot1 = client.containers.run(BUSYBOX, "sh", detach=True,
+                                                    name=container_names[1], tty=True, stdin_open=True,
+                                                    volumes=[snapshot_names[0] + ':/data1']
+        )
+        self.tmp_containers.append(container_snapshot1.id)
+        self.hpe_inspect_container_volume_mount(snapshot_names[0], container_names[1])
+        self.hpe_verify_snapshot_mount(snapshot_names[0])
 
-        self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
-                                 snapshotOf=volume_name, expirationHours='2')
-
-        container.start()
-        container.exec_run("sh -c 'echo \"snapshot_data3\" > /data1/test3'")
-        container.stop()
-        self.client.create_volume(name=snapshot_names[0], driver=HPE3PAR,
-                             driver_opts={'promote' : volume_name})
-
-        container.start()
-        # assert container.wait()['StatusCode'] == 0
-        ExecResult1 = container.exec_run("sh -c 'ls data1/'")
+        ExecResult1 = container_snapshot1.exec_run("sh -c 'ls data1/'")
         self.assertEqual(ExecResult1.exit_code, 0)
         self.assertEqual(ExecResult1.output, b"test1\n")
-        ExecResult2 = container.exec_run("sh -c 'cat /data1/test1'")
+        ExecResult2 = container_snapshot1.exec_run("sh -c 'cat /data1/test1'")
         self.assertEqual(ExecResult2.exit_code, 0)
         self.assertEqual(ExecResult2.output, b"snapshot_data1\n")
+        container_snapshot1.stop()
 
-        container.exec_run("sh -c 'rm /data1/test1'")
-        container.stop()
+        container_volume.start()
+        container_volume.exec_run("sh -c 'echo \"snapshot_data2\" > /data1/test2'")
+        container_volume.stop()
 
-        self.client.create_volume(name=snapshot_names[1], driver=HPE3PAR,
-                             driver_opts={'promote': volume_name})
-        container.start()
+        self.hpe_create_snapshot(snapshot_names[1], driver=HPE3PAR,
+                                 virtualCopyOf=volume_name, expirationHours='2')
 
-        ExecResult3 = container.exec_run("sh -c 'ls data1/'")
+        container_snapshot2 = client.containers.run(BUSYBOX, "sh", detach=True,
+                                                    name=container_names[2], tty=True, stdin_open=True,
+                                                    volumes=[snapshot_names[1] + ':/data1']
+                                                    )
+        self.tmp_containers.append(container_snapshot2.id)
+        self.hpe_inspect_container_volume_mount(snapshot_names[1], container_names[2])
+        self.hpe_verify_snapshot_mount(snapshot_names[1])
+
+        ExecResult3 = container_snapshot2.exec_run("sh -c 'ls data1/'")
         self.assertEqual(ExecResult3.exit_code, 0)
         self.assertEqual(ExecResult3.output, b"test1\ntest2\n")
-        ExecResult4 = container.exec_run("sh -c 'cat /data1/test1'")
+        ExecResult4 = container_snapshot2.exec_run("sh -c 'cat /data1/test1'")
         self.assertEqual(ExecResult4.exit_code, 0)
         self.assertEqual(ExecResult4.output, b"snapshot_data1\n")
-        ExecResult5 = container.exec_run("sh -c 'cat /data1/test2'")
+        ExecResult5 = container_snapshot2.exec_run("sh -c 'cat /data1/test2'")
         self.assertEqual(ExecResult5.exit_code, 0)
         self.assertEqual(ExecResult5.output, b"snapshot_data2\n")
+        container_snapshot2.stop()
 
-        container.stop()
-        container.remove()
+        self.hpe_inspect_container_volume_unmount(snapshot_names[0], container_names[1])
+        self.hpe_inspect_container_volume_unmount(snapshot_names[1], container_names[2])
+
+        container_volume.remove()
+        container_snapshot1.remove()
+        container_snapshot2.remove()
+
         self.hpe_verify_volume_unmount(volume_name)
+
         for snapshot in snapshot_names:
+            self.hpe_verify_snapshot_unmount(snapshot)
             self.hpe_delete_snapshot(volume_name, snapshot)
             self.hpe_verify_snapshot_deleted(volume_name, snapshot)
         inspect_volume_snapshot = self.client.inspect_volume(volume_name)
@@ -817,6 +845,87 @@ class VolumeBindTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
         self.hpe_delete_volume(volume)
         self.hpe_verify_volume_deleted(volume_name)
         self.hpe_remove_vvs_qos(vvs_name=vvset_name)
+
+    def test_volume_mount_multiple_containers(self):
+        '''
+           This will test a volume mount operation to multiple containers within same node.
+
+           Steps:
+           1. Create volume and verify if volume got created in docker host and 3PAR array
+           2. Create a container1 and mount volume to it with command to create a file in 3Par volume.
+           3. Create a container2 and mount the same volume to it
+           4. Write data from container2 and verify the data of container1.
+           6. Create a container3 and mount the same volume in read-only mode.
+           7. Read the data from container3.
+           8. Stop container1, container2 & container3.
+           9. Remove all containers.
+           10. Delete volume and verify removal from 3par array.
+        '''
+        client = docker.from_env(version=TEST_API_VERSION)
+        volume_name = helpers.random_name()
+        mounters = [helpers.random_name(), helpers.random_name(), helpers.random_name()]
+        self.tmp_volumes.append(volume_name)
+        volume = self.hpe_create_volume(volume_name, driver=HPE3PAR,
+                               size='5', provisioning='thin')
+        container1 = client.containers.run(BUSYBOX, "sh", detach=True, name=mounters[0],
+                                           volumes=[volume_name + ':/data1'],
+                                           tty=True, stdin_open=True
+        )
+        self.tmp_containers.append(container1.id)
+        # assert container1.wait()['StatusCode'] == 0
+        container1.exec_run("sh -c 'echo \"This volume will be shared between containers.\" > /data1/Example1.txt'")
+
+        container2 = client.containers.run(BUSYBOX, "sh", detach=True, name=mounters[1],
+                                           volumes=[volume_name + ':/data1'],
+                                           tty=True, stdin_open=True
+        )
+        self.tmp_containers.append(container2.id)
+        # assert container2.wait()['StatusCode'] == 0
+        self.hpe_inspect_container_volume_mount(volume_name, mounters[1])
+        self.hpe_verify_volume_mount(volume_name)
+        container2.exec_run("sh -c 'echo \"Both containers will use this.\" >> /data1/Example1.txt'")
+        ExecResult1 = container2.exec_run("cat /data1/Example1.txt")
+        self.assertEqual(ExecResult1.output,
+                         b'This volume will be shared between containers.\nBoth containers will use this.\n')
+        self.assertEqual(ExecResult1.exit_code, 0)
+
+        container3 = client.containers.run(BUSYBOX, "sh", detach=True, name=mounters[2],
+                                           volumes=[volume_name + ':/data1:ro'],
+                                           tty=True, stdin_open=True
+        )
+        self.tmp_containers.append(container3.id)
+        # assert container3.wait()['StatusCode'] == 0
+        self.hpe_inspect_container_volume_mount(volume_name, mounters[2])
+        self.hpe_verify_volume_mount(volume_name)
+        ExecResult2 = container3.exec_run("cat /data1/Example1.txt")
+        self.assertEqual(ExecResult2.output,
+                         b'This volume will be shared between containers.\nBoth containers will use this.\n')
+        self.assertEqual(ExecResult2.exit_code, 0)
+
+        ExecResult3 = container3.exec_run("touch /data1/Example2.txt")
+        self.assertEqual(ExecResult3.output,
+                         b'touch: /data1/Example2.txt: Read-only file system\n')
+        self.assertNotEqual(ExecResult3.exit_code, 0)
+
+        container1.stop()
+        self.hpe_verify_volume_mount(volume_name)
+        container2.stop()
+        self.hpe_inspect_container_volume_mount(volume_name, mounters[1])
+        self.hpe_verify_volume_mount(volume_name)
+
+        container3.stop()
+        self.hpe_inspect_container_volume_unmount(volume_name, mounters[2])
+        self.hpe_verify_volume_unmount(volume_name)
+        container_list = client.containers.list(all=True)
+        for ctnr in container_list:
+            try:
+                self.client.remove_container(ctnr.id)
+            except docker.errors.APIError:
+                continue
+        # removed_ctnr_list = client.containers.list(all=True)
+        # assert len(removed_ctnr_list) == 1
+        self.hpe_delete_volume(volume)
+        self.hpe_verify_volume_deleted(volume_name)
 
 
 
