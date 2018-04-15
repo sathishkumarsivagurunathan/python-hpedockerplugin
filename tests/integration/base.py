@@ -6,7 +6,7 @@ import docker
 from docker.utils import kwargs_from_env
 import six
 
-from .. import helpers
+from . import helpers
 
 BUSYBOX = 'busybox:buildroot-2014.02'
 TEST_API_VERSION = os.environ.get('DOCKER_TEST_API_VERSION')
