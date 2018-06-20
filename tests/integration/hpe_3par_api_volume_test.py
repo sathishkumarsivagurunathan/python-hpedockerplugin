@@ -1,6 +1,7 @@
 import pytest
 import docker
 import yaml
+import os
 from .base import TEST_API_VERSION, BUSYBOX
 from . import helpers
 from .helpers import requires_api_version
@@ -11,60 +12,101 @@ with open("testdata/test_config.yml", 'r') as ymlfile:
     cfg = yaml.load(ymlfile)
 
 # Declaring Global variables and assigning the values from YAML config file
-HPE3PAR = cfg['plugin']['latest_version']
+
+PLUGIN_TYPE = cfg['plugin']['type']
 HOST_OS = cfg['platform']['os']
-CERTS_SOURCE = cfg['plugin']['certs_source']
 THIN_SIZE = cfg['volumes']['thin_size']
 FULL_SIZE = cfg['volumes']['full_size']
 DEDUP_SIZE = cfg['volumes']['dedup_size']
 COMPRESS_SIZE = cfg['volumes']['compress_size']
+
+if PLUGIN_TYPE == 'managed':
+    HPE3PAR = cfg['plugin']['managed_plugin_latest']
+    CERTS_SOURCE = cfg['plugin']['certs_source']
+else:
+    HPE3PAR = cfg['plugin']['containerized_plugin']
+    PLUGIN_IMAGE = cfg['plugin']['containerized_image']
+    if HOST_OS == 'ubuntu':
+        PLUGIN_VOLUMES = cfg['ubuntu_volumes']
+    elif HOST_OS == 'suse':
+        PLUGIN_VOLUMES = cfg['suse_volumes']
+    else:
+        PLUGIN_VOLUMES = cfg['rhel_volumes']
 
 @requires_api_version('1.21')
 class VolumesTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
     @classmethod
     def setUpClass(cls):
-        c = docker.APIClient(
-            version=TEST_API_VERSION, timeout=600,
-            **docker.utils.kwargs_from_env()
-        )
-        try:
-            prv = c.plugin_privileges(HPE3PAR)
-            logs = [d for d in c.pull_plugin(HPE3PAR, prv)]
-            assert filter(lambda x: x['status'] == 'Download complete', logs)
-            if HOST_OS == 'ubuntu':
-                c.configure_plugin(HPE3PAR, {
-                    'certs.source': CERTS_SOURCE
-                })
-            else:
-                c.configure_plugin(HPE3PAR, {
-                    'certs.source': CERTS_SOURCE,
-                    'glibc_libs.source': '/lib64'
-                })
-            pl_data = c.inspect_plugin(HPE3PAR)
-            assert pl_data['Enabled'] is False
-            while pl_data['Enabled'] is False:
-                c.enable_plugin(HPE3PAR)
-            pl_data = c.inspect_plugin(HPE3PAR)
-            assert pl_data['Enabled'] is True
-        except docker.errors.APIError:
-            pass
+        if PLUGIN_TYPE == 'managed':
+            c = docker.APIClient(
+                version=TEST_API_VERSION, timeout=600,
+                **docker.utils.kwargs_from_env()
+                )
+            try:
+                prv = c.plugin_privileges(HPE3PAR)
+                logs = [d for d in c.pull_plugin(HPE3PAR, prv)]
+                assert filter(lambda x: x['status'] == 'Download complete', logs)
+                if HOST_OS == 'ubuntu':
+                    c.configure_plugin(HPE3PAR, {
+                        'certs.source': CERTS_SOURCE
+                    })
+                else:
+                    c.configure_plugin(HPE3PAR, {
+                        'certs.source': CERTS_SOURCE,
+                        'glibc_libs.source': '/lib64'
+                    })
+                pl_data = c.inspect_plugin(HPE3PAR)
+                assert pl_data['Enabled'] is False
+                while pl_data['Enabled'] is False:
+                    c.enable_plugin(HPE3PAR)
+                pl_data = c.inspect_plugin(HPE3PAR)
+                assert pl_data['Enabled'] is True
+            except docker.errors.APIError:
+                pass
+        else:
+            c = docker.from_env(version=TEST_API_VERSION, timeout=600)
+            try:
+                mount = docker.types.Mount(type='bind', source='/opt/hpe/data',
+                                           target='/opt/hpe/data', propagation='rshared'
+                )
+                c.containers.run(PLUGIN_IMAGE, detach=True,
+                                 name='hpe_legacy_plugin', privileged=True, network_mode='host',
+                                 restart_policy={'Name': 'on-failure', 'MaximumRetryCount': 5},
+                                 volumes=PLUGIN_VOLUMES, mounts=[mount],
+                                 labels={'type': 'plugin'}
+                )
+            except docker.errors.APIError:
+                pass
+
 
     @classmethod
     def tearDownClass(cls):
-        c = docker.APIClient(
-            version=TEST_API_VERSION, timeout=600,
-            **docker.utils.kwargs_from_env()
-        )
-        try:
-            c.disable_plugin(HPE3PAR)
-        except docker.errors.APIError:
-            pass
+        if PLUGIN_TYPE == 'managed':
+            c = docker.APIClient(
+                version=TEST_API_VERSION, timeout=600,
+                **docker.utils.kwargs_from_env()
+            )
+            try:
+                c.disable_plugin(HPE3PAR)
+            except docker.errors.APIError:
+                pass
 
-        try:
-            c.remove_plugin(HPE3PAR, force=True)
-        except docker.errors.APIError:
-            pass
+            try:
+                c.remove_plugin(HPE3PAR, force=True)
+            except docker.errors.APIError:
+                pass
+        else:
+            c = docker.from_env(version=TEST_API_VERSION, timeout=600)
+            try:
+                container_list = c.containers.list(all=True, filters={'label': 'type=plugin'})
+                container_list[0].stop()
+                container_list[0].remove()
+                os.remove("/run/docker/plugins/hpe.sock")
+                os.remove("/run/docker/plugins/hpe.sock.lock")
+            except docker.errors.APIError:
+                pass
+
 
     def test_thin_prov_volume(self):
         '''

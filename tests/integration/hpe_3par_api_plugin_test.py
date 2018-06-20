@@ -1,6 +1,7 @@
 import docker
 import pytest
 import yaml
+import unittest
 
 from .base import BaseAPIIntegrationTest, TEST_API_VERSION, BUSYBOX
 from . import helpers
@@ -13,8 +14,9 @@ with open("testdata/test_config.yml", 'r') as ymlfile:
     cfg = yaml.load(ymlfile)
 
 # Declaring Global variables and assigning the values from YAML config file
-HPE3PAR = cfg['plugin']['latest_version']
-HPE3PAR_OLD = cfg['plugin']['old_version']
+PLUGIN_TYPE = cfg['plugin']['type']
+HPE3PAR = cfg['plugin']['managed_plugin_latest']
+HPE3PAR_OLD = cfg['plugin']['managed_plugin_old']
 HOST_OS = cfg['platform']['os']
 CERTS_SOURCE = cfg['plugin']['certs_source']
 THIN_SIZE = cfg['volumes']['thin_size']
@@ -23,32 +25,39 @@ client = docker.APIClient(
             **docker.utils.kwargs_from_env()
 )
 
+if PLUGIN_TYPE == 'containerized':
+    skip_plugin_tests = True
+else:
+    skip_plugin_tests = False
 
 @requires_api_version('1.25')
+@unittest.skipIf(skip_plugin_tests, 'Plugins Tests are not supported for containerized plugin')
 class PluginTest(HPE3ParBackendVerification,HPE3ParVolumePluginTest):
 
-    @classmethod
-    def teardown_class(cls):
+    def tearDown(self):
+        c = docker.APIClient(
+            version=TEST_API_VERSION, timeout=600,
+            **docker.utils.kwargs_from_env()
+        )
         try:
-            client.remove_plugin(HPE3PAR, force=True)
-            if HPE3PAR_OLD:
-                client.remove_plugin(HPE3PAR_OLD, force=True)
+            c.disable_plugin(HPE3PAR)
         except docker.errors.APIError:
             pass
 
-    def teardown_method(self, method):
         try:
-            client.disable_plugin(HPE3PAR)
-            if HPE3PAR_OLD:
-                client.disable_plugin(HPE3PAR_OLD)
+            c.disable_plugin(HPE3PAR_OLD)
         except docker.errors.APIError:
             pass
 
-        for p in self.tmp_plugins:
-            try:
-                client.remove_plugin(p, force=True)
-            except docker.errors.APIError:
-                pass
+        try:
+            c.remove_plugin(HPE3PAR, force=True)
+        except docker.errors.APIError:
+            pass
+
+        try:
+            c.remove_plugin(HPE3PAR_OLD, force=True)
+        except docker.errors.APIError:
+            pass
 
     def ensure_plugin_installed(self, plugin_name):
         # This test will ensure if the plugin is installed

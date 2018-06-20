@@ -19,8 +19,8 @@ with open("testdata/test_config.yml", 'r') as ymlfile:
     cfg = yaml.load(ymlfile)
 
 # Declaring Global variables and assigning the values from YAML config file
-HPE3PAR = cfg['plugin']['latest_version']
-HPE3PAR_OLD = cfg['plugin']['old_version']
+
+PLUGIN_TYPE = cfg['plugin']['type']
 ETCD_HOST = cfg['etcd']['host']
 ETCD_PORT = cfg['etcd']['port']
 CLIENT_CERT = cfg['etcd']['client_cert']
@@ -35,6 +35,13 @@ MIN_BW = cfg['qos']['min_bw']
 MAX_BW = cfg['qos']['max_bw']
 LATENCY = cfg['qos']['latency']
 PRIORITY = cfg['qos']['priority']
+
+if PLUGIN_TYPE == 'managed':
+    HPE3PAR = cfg['plugin']['managed_plugin_latest']
+    HPE3PAR_OLD = cfg['plugin']['managed_plugin_old']
+    CERTS_SOURCE = cfg['plugin']['certs_source']
+else:
+    HPE3PAR = cfg['plugin']['containerized_plugin']
 
 @requires_api_version('1.21')
 class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
@@ -58,10 +65,10 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         self.assertIn('Name', docker_volume)
         self.assertEqual(docker_volume['Name'], name)
         self.assertIn('Driver', docker_volume)
-        if driver == HPE3PAR_OLD:
-            self.assertEqual(docker_volume['Driver'], HPE3PAR_OLD)
-        else:
+        if driver == HPE3PAR:
             self.assertEqual(docker_volume['Driver'], HPE3PAR)
+        else:
+            self.assertEqual(docker_volume['Driver'], HPE3PAR_OLD)
         # Verify all volume optional parameters in docker managed plugin system
         driver_options = ['size', 'provisioning', 'flash-cache', 'compression', 'cloneOf',
                           'qos-name', 'mountConflictDelay']
@@ -120,10 +127,10 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         self.assertIn('Name', snapshot_creation)
         self.assertEqual(snapshot_creation['Name'], snapshot_name)
         self.assertIn('Driver', snapshot_creation)
-        if driver == HPE3PAR_OLD:
-            self.assertEqual(snapshot_creation['Driver'], HPE3PAR_OLD)
-        else:
+        if driver == HPE3PAR:
             self.assertEqual(snapshot_creation['Driver'], HPE3PAR)
+        else:
+            self.assertEqual(snapshot_creation['Driver'], HPE3PAR_OLD)
 
         volumes = self.client.volumes()
         # Verify if created snapshot is not available docker volume lists
@@ -253,10 +260,10 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         self.assertEqual(inspect_start['State']['Running'], True)
         self.assertNotEqual(inspect_start['Mounts'], None)
         mount = dict(inspect_start['Mounts'][0])
-        if host_config['VolumeDriver'] == HPE3PAR_OLD:
-            self.assertEqual(mount['Driver'], HPE3PAR_OLD)
-        else:
+        if host_config['VolumeDriver'] == HPE3PAR:
             self.assertEqual(mount['Driver'], HPE3PAR)
+        else:
+            self.assertEqual(mount['Driver'], HPE3PAR_OLD)
         self.assertEqual(mount['RW'], True)
         self.assertEqual(mount['Type'], 'volume')
         self.assertNotEqual(mount['Source'], None)
@@ -291,15 +298,26 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         # Inspect container
         inspect_container = self.client.inspect_container(container_name)
         mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith('hpedocker-', 109)
-        count = 0
-        while mount_status == False and count < 25:
-           inspect_container = self.client.inspect_container(container_name)
-           mount_source = inspect_container['Mounts'][0]['Source']
-           mount_status = mount_source.startswith('hpedocker-', 109)
-           count = count + 1
-           sleep(5)
-        self.assertEqual(mount_status, True)
+        if PLUGIN_TYPE == 'managed':
+            mount_status = mount_source.startswith('hpedocker-', 109)
+            count = 0
+            while mount_status == False and count < 25:
+                inspect_container = self.client.inspect_container(container_name)
+                mount_source = inspect_container['Mounts'][0]['Source']
+                mount_status = mount_source.startswith('hpedocker-', 109)
+                count = count + 1
+                sleep(5)
+            self.assertEqual(mount_status, True)
+        else:
+            mount_status = mount_source.startswith('hpedocker-', 14)
+            count = 0
+            while mount_status == False and count < 25:
+                inspect_container = self.client.inspect_container(container_name)
+                mount_source = inspect_container['Mounts'][0]['Source']
+                mount_status = mount_source.startswith('hpedocker-', 14)
+                count = count + 1
+                sleep(5)
+            self.assertEqual(mount_status, True)
         # Inspect volume
         inspect_volume = self.client.inspect_volume(volume_name)
         mountpoint = inspect_volume['Mountpoint']
@@ -310,15 +328,27 @@ class HPE3ParVolumePluginTest(BaseAPIIntegrationTest):
         # Inspect container
         inspect_container = self.client.inspect_container(container_name)
         mount_source = inspect_container['Mounts'][0]['Source']
-        mount_status = mount_source.startswith('hpedocker-', 109)
-        count = 0
-        while mount_status == True and count < 25:
-           inspect_container = self.client.inspect_container(container_name)
-           mount_source = inspect_container['Mounts'][0]['Source']
-           mount_status = mount_source.startswith('hpedocker-', 109)
-           count = count + 1
-           sleep(5)
-        self.assertEqual(mount_status, False)
+        if PLUGIN_TYPE == 'managed':
+            mount_status = mount_source.startswith('hpedocker-', 109)
+            count = 0
+            while mount_status == True and count < 25:
+                inspect_container = self.client.inspect_container(container_name)
+                mount_source = inspect_container['Mounts'][0]['Source']
+                mount_status = mount_source.startswith('hpedocker-', 109)
+                count = count + 1
+                sleep(5)
+            self.assertEqual(mount_status, False)
+        else:
+            mount_status = mount_source.startswith('hpedocker-', 14)
+            count = 0
+            while mount_status == True and count < 25:
+                inspect_container = self.client.inspect_container(container_name)
+                mount_source = inspect_container['Mounts'][0]['Source']
+                mount_status = mount_source.startswith('hpedocker-', 14)
+                count = count + 1
+                sleep(5)
+            self.assertEqual(mount_status, False)
+
         # Inspect volume
         inspect_volume = self.client.inspect_volume(volume_name)
         mountpoint = inspect_volume['Mountpoint']
