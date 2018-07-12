@@ -99,18 +99,14 @@ CONF.register_opts(hpe3par_opts)
 
 class HPE3PARCommon(object):
     """Class that contains common code for the 3PAR drivers.
-
     Version history:
-
     .. code-block:: none
-
         0.0.1 - Initial version of 3PAR common created.
         0.0.2 - Added the ability to choose volume provisionings.
         0.0.3 - Added support for flash cache.
         0.0.4 - Added support for compression CRUD operation.
         0.0.5 - Added support for snapshot and clone.
         0.0.6 - Added support for reverting volume to snapshot state.
-
     """
 
     VERSION = "0.0.6"
@@ -411,7 +407,6 @@ class HPE3PARCommon(object):
 
     def create_vlun(self, volume, host, is_snap, nsp=None, lun_id=None):
         """Create a VLUN.
-
         In order to export a volume on a 3PAR box, we have to create a VLUN.
         """
         volume_name = utils.get_3par_name(volume['id'], is_snap)
@@ -645,7 +640,6 @@ class HPE3PARCommon(object):
 
     def create_volume(self, volume):
         """
-
         :param volume:
         :return:
         :raises:
@@ -677,7 +671,11 @@ class HPE3PARCommon(object):
 
         # TODO(leeantho): Choose the first CPG for now. In the future
         # support selecting different CPGs if multiple are provided.
-        cpg = self.config.hpe3par_cpg[0]
+        if volume['cpg'] is not None:
+            cpg = volume['cpg']
+        else:
+            cpg = self.config.hpe3par_cpg[0]
+            volume['cpg'] = cpg
 
         # check for valid provisioning type
         prov_value = volume['provisioning']
@@ -713,12 +711,18 @@ class HPE3PARCommon(object):
                 reason=err)
 
         extras = {'comment': json.dumps(comments),
-                  'tpvv': tpvv, }
+                  'tpvv': tpvv,}
 
-        if len(self.config.hpe3par_snapcpg):
-            extras['snapCPG'] = self.config.hpe3par_snapcpg[0]
+        if volume['snap_cpg'] is not None:
+            extras['snapCPG'] = volume['snap_cpg']
         else:
-            extras['snapCPG'] = cpg
+            if len(self.config.hpe3par_snapcpg):
+                snap_cpg = self.config.hpe3par_snapcpg[0]
+                extras['snapCPG'] = snap_cpg
+                volume['snap_cpg'] = snap_cpg
+            else:
+                extras['snapCPG'] = cpg
+                volume['snap_cpg'] = cpg
 
             # Only set the dedup option if the backend supports it.
         if self.API_VERSION >= DEDUP_API_VERSION:
@@ -729,7 +733,7 @@ class HPE3PARCommon(object):
         if (tpvv is False and tdvv is False):
             fullprovision = True
 
-        compression_val = volume['compression']   # None/true/False
+        compression_val = volume['compression']  # None/true/False
         compression = None
 
         if compression_val is not None:
@@ -910,10 +914,8 @@ class HPE3PARCommon(object):
 
     def find_existing_vlun(self, volume, host, is_snap):
         """Finds an existing VLUN for a volume on a host.
-
         Returns an existing VLUN's information. If no existing VLUN is found,
         None is returned.
-
         :param volume: A dictionary describing a volume.
         :param host: A dictionary describing a host.
         """
@@ -1202,7 +1204,6 @@ class HPE3PARCommon(object):
 
     def _wait_for_task_completion(self, task_id):
         """This waits for a 3PAR background task complete or fail.
-
         This looks for a task to get out of the 'active' state.
         """
         # Wait for the physical copy task to complete
