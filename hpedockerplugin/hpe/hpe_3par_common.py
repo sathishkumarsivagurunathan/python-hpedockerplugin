@@ -99,8 +99,11 @@ CONF.register_opts(hpe3par_opts)
 
 class HPE3PARCommon(object):
     """Class that contains common code for the 3PAR drivers.
+    
     Version history:
+    
     .. code-block:: none
+    
         0.0.1 - Initial version of 3PAR common created.
         0.0.2 - Added the ability to choose volume provisionings.
         0.0.3 - Added support for flash cache.
