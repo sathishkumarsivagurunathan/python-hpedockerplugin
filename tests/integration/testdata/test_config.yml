@@ -31,17 +31,17 @@ volumes:
 
 # 3Par backend details (mentioned in hpe.conf) to initialize WSAPI session
 backend:
-    3Par_api_url: https://10.50.3.9:8080/api/v1
+    3Par_api_url: https://192.168.67.5:8080/api/v1
 
 # Multipath configuration details
 # Mention the number of iSCSI ports present in hpe.conf
 # Mention the number of FC zones configured in Fabric
 multipath:
-    ports_zones: 2
+    ports_zones: 1
 
 # Mention the snapshot cpg here
 snapshot:
-    snap_cpg: Docker_CI
+    snap_cpg: Docker_CI_NEW
 
 # Mention the details required to create and verify VVset with QoS in 3par array
 # Set Priority : '1' for Low, '2' for Normal and '3' for High

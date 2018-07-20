@@ -5,9 +5,9 @@ import yaml
 from .base import BaseAPIIntegrationTest, TEST_API_VERSION
 from .helpers import requires_api_version
 
-import utils
+import integration.utils
 import urllib3
-from etcdutil import EtcdUtil
+from integration.etcdutil import EtcdUtil
 from hpe3parclient import exceptions as exc
 from hpe3parclient.client import HPE3ParClient
 from oslo_utils import units

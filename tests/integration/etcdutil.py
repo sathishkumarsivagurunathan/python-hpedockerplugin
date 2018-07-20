@@ -12,12 +12,12 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import etcd
+import etcd3 as etcd
 import json
 from oslo_log import log as logging
 import six
-from i18n import _, _LI
-import exception
+from integration.i18n import _, _LI
+import integration.exception as exception
 
 LOG = logging.getLogger(__name__)
 
@@ -33,7 +33,8 @@ class EtcdUtil(object):
 
         LOG.info('ETCDUTIL datatype of host is %s ' % type(self.host))
         host_tuple = ()
-        if isinstance(self.host, basestring):
+
+        if isinstance(self.host, str):
           if ',' in self.host:
             host_list = [ h.strip() for h in host.split(',') ]
 
