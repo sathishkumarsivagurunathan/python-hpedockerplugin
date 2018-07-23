@@ -42,7 +42,7 @@ multipath:
 
 # Mention the snapshot cpg here
 snapshot:
-    snap_cpg: Docker_CI_NEW
+    snap_cpg: Docker_CI
 
 # Mention the details required to create and verify VVset with QoS in 3par array
 # Set Priority : '1' for Low, '2' for Normal and '3' for High
