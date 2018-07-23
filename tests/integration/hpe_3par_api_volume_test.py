@@ -5,7 +5,7 @@ import os
 from .base import TEST_API_VERSION, BUSYBOX
 from . import helpers
 from .helpers import requires_api_version
-from hpe_3par_manager import HPE3ParBackendVerification,HPE3ParVolumePluginTest
+from .hpe_3par_manager import HPE3ParBackendVerification,HPE3ParVolumePluginTest
 
 # Importing test data from YAML config file
 with open("testdata/test_config.yml", 'r') as ymlfile:
