@@ -34,7 +34,8 @@ import hpedockerplugin.backend_orchestrator as orchestrator
 LOG = logging.getLogger(__name__)
 
 DEFAULT_BACKEND_NAME = "DEFAULT"
-
+CONFIG_FILE = '/etc/hpedockerplugin/hpe.conf'
+CONFIG = ['--config-file', CONFIG_FILE]
 
 class VolumePlugin(object):
     """
@@ -242,7 +243,15 @@ class VolumePlugin(object):
                                               mount_conflict_delay_str})
             if ('backend' in contents['Opts'] and
                     contents['Opts']['backend'] != ""):
-                current_backend = str(contents['Opts']['backend'])
+                if str(contents['Opts']['backend']) in setupcfg.get_all_backends(CONFIG):
+                    current_backend = str(contents['Opts']['backend'])
+                else:
+                    msg = (_('volume driver create failed, error is:'
+                             'passed Backend is present in CONFIG file.'
+                             'Valid vaues are: %(valid)s') % {
+                             'valid': setupcfg.get_all_backends(CONFIG)} )
+                    LOG.error(msg)
+                    raise exception.HPEPluginCreateException(reason=msg)
 
             if ('virtualCopyOf' in contents['Opts']):
                 return self.volumedriver_create_snapshot(name,

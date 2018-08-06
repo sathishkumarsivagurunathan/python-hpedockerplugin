@@ -26,6 +26,9 @@ LOG = logging.getLogger(__name__)
 
 
 class VolumeManager(object):
+
+    _etcd = self._get_etcd_util(default_config)
+
     def __init__(self, hpepluginconfig, default_config):
         self._hpepluginconfig = hpepluginconfig
         self._my_ip = netutils.get_my_ipv4()
@@ -39,7 +42,7 @@ class VolumeManager(object):
 
         self._initialize_driver(hpepluginconfig)
         self._connector = self._get_connector(hpepluginconfig)
-        self._etcd = self._get_etcd_util(default_config)
+        #self._etcd = self._get_etcd_util(default_config)
 
         # Volume fencing requirement
         self._node_id = self._get_node_id()
@@ -426,6 +429,12 @@ class VolumeManager(object):
             response = json.dumps({u"Err": msg})
             return response
         volid = vol['id']
+
+        if 'backend' not in vol:
+            vol_backend_flag = volume.DEFAULT_BACKEND
+            vol['backend'] = vol_backend_flag
+            self._etcd.update_vol(volid, 'backend', vol_backend_flag)
+
         if 'has_schedule' not in vol:
             vol_sched_flag = volume.DEFAULT_SCHEDULE
             vol['has_schedule'] = vol_sched_flag
@@ -867,6 +876,7 @@ class VolumeManager(object):
         LOG.debug("Get volume/snapshot: \n%s" % str(response))
         return response
 
+    @staticmethod
     def list_volumes(self):
         volumes = self._etcd.get_all_vols()
 
@@ -895,6 +905,7 @@ class VolumeManager(object):
         response = json.dumps({u"Err": '', u"Volumes": volumelist})
         return response
 
+    @staticmethod
     def get_path(self, volname):
         volinfo = self._etcd.get_vol_byname(volname)
         if volinfo is None:

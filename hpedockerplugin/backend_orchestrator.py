@@ -47,10 +47,14 @@ class Orchestrator(object):
         manager_objs = {}
 
         for backend_name in setupcfg.get_all_backends(CONFIG):
-            LOG.info('INITIALIZING backend  : %s' % backend_name)
-            manager_objs[backend_name] = mgr.VolumeManager(
-                setupcfg.backend_config(CONFIG, backend_name),
-                defaultconfig)
+            try:
+                LOG.info('INITIALIZING backend  : %s' % backend_name)
+                manager_objs[backend_name] = mgr.VolumeManager(
+                    setupcfg.backend_config(CONFIG, backend_name),
+                    defaultconfig)
+	    except:
+                LOG.error('Invalid backend info : %s' % backend_name)
+                continue
 
         return manager_objs
 
@@ -119,7 +123,7 @@ class Orchestrator(object):
 
     def get_path(self, volname):
         backend = self.get_volume_backend_details(volname)
-        return self._manager[backend].get_path(volname)
+        return mgr.VolumeManager.get_path(volname)
 
     def get_volume_snap_details(self, volname, snapname, qualified_name):
         backend = self.get_volume_backend_details(volname)
@@ -132,4 +136,4 @@ class Orchestrator(object):
         return self._manager[backend].manage_existing(volname, existing_ref)
 
     def volumedriver_list(self):
-        return self._manager[DEFAULT_BACKEND_NAME].list_volumes()
+        return mgr.VolumeManager.list_volumes()

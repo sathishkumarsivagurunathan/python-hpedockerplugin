@@ -69,7 +69,7 @@ def setup_logging(name, level):
 def getdefaultconfig(configfile):
     CONF(configfile, project='hpedockerplugin', version='1.0.0')
     sections = CONF.list_all_sections()
-    print("WILLIAM -- SECTION NAME: %s" % sections)
+    print("SECTION NAME: %s" % sections)
     for section in sections:
         opt_group = cfg.OptGroup(name=section,
                                  title=section)
