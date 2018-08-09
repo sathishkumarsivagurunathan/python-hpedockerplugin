@@ -374,7 +374,7 @@ class HPE3ParBackendVerification(BaseAPIIntegrationTest):
 
     def _hpe_get_3par_client_login(self):
         # Login to 3Par array and initialize connection for WSAPI calls
-        hpe_3par_cli = HPE3ParClient(HPE3PAR_API_URL)
+        hpe_3par_cli = HPE3ParClient(HPE3PAR_API_URL, True, False, None, True)
         hpe_3par_cli.login('3paradm', '3pardata')
         return hpe_3par_cli
 
